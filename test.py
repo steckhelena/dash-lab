@@ -1,6 +1,4 @@
-import os
 import subprocess
-import sys
 
 # mode=['3g','4g','5g'] #network type '5g','3g','4g','5g'
 mode = ["5g"]  # network type '5g','3g','4g','5g'
