@@ -1,111 +1,123 @@
 import json
 import os
-import sys
-import time
+import pathlib
 from collections import OrderedDict
 from multiprocessing import Process
+from typing import List, Literal, TypedDict, Union
 
 from mininet.log import info, setLogLevel
 from mininet.net import Mininet
+from mininet.node import Host, Switch
 
-station = []
+MobilityType = Union[
+    Literal["Driving-1"],
+    Literal["Driving-10"],
+    Literal["Driving-2"],
+    Literal["Driving-6"],
+    Literal["Driving-7"],
+    Literal["Driving-8"],
+    Literal["Driving-9"],
+    Literal["Static-1"],
+    Literal["Static-2"],
+    Literal["Static-3"],
+]
 
 
-def topology():
+class Experiment(TypedDict):
+    id: int
+    mode: Literal["5g"]
+    mobility: MobilityType
+    clients: int
+    server_type: Union[Literal["asgi"], Literal["wsgi"]]
+    adaptation_algorithm: Union[
+        Literal["conventional"], Literal["elastic"], Literal["bba"], Literal["logistic"]
+    ]
+    server_protocol: Union[Literal["quic"], Literal["tcp"]]
+    godash_config_path: str
+    godash_bin_path: str
 
-    mod = str(sys.argv[1])  # network type
-    print("-------------------------------")
-    print("Network Trace Type : " + str(mod) + "\n")
 
-    nett = str(sys.argv[2])  # mobility
-    print("-------------------------------")
-    print("Network Trace Mobility : " + str(nett) + "\n")
+class TopologyResponse(TypedDict):
+    stations: List[Host]
+    switch1: Switch
+    switch2: Switch
+    server: Host
 
-    host = int(sys.argv[3])  # num of host
-    print("-------------------------------")
-    print("Number of Total Host : " + str(host) + "\n")
 
-    algo = str(sys.argv[4])  # name of adaptation algorithm
-    print("-------------------------------")
-    print("ABS Algorithm : " + str(algo) + "\n")
+def topology(experiment: Experiment) -> TopologyResponse:
+    """
+    This function is responsible for setting up the mininet topology for the dash
+    lab tests.
 
-    prot = str(sys.argv[5])  # name of protocol
-    print("-------------------------------")
-    print("Protocol : " + str(prot) + "\n")
-
-    sertype = str(sys.argv[6])  # name of server
-    print("-------------------------------")
-    print("Server : " + str(sertype) + "\n")
-    fol = int(sys.argv[7])  # num of host
+    The topology is as follows:
+    ┌────────┐
+    │Client 1├───┐
+    └────────┘   │
+        .        │
+        .        │ ┌────────┐       ┌────────┐     ┌──────┐
+        .  ──────┼─┤Swith s1├───────┤Swith s2├─────┤Server│
+        .        │ └────────┘       └────────┘     └──────┘
+        .        │
+    ┌────────┐   │
+    │Client N├───┘
+    └────────┘
+    """
 
     # Create a network
     net = Mininet()
 
+    stations = []
+
     info("*** Creating nodes\n")
-    for i in range(host):
+    for i in range(experiment["clients"]):
         m = "sta%s" % (i + 1)
         j = i + 1
-        station.insert(i, net.addHost(m, ip="10.0.0.2%s/24" % (j)))
+        stations.insert(i, net.addHost(m, ip="10.0.0.2%s/24" % (j)))
 
     server = net.addHost("server", ip="10.0.0.1/24")
 
-    dc = net.addHost("dc", ip="10.0.0.80/24")
-    ds = net.addHost("ds", ip="10.0.0.81/24")
+    switch1 = net.addSwitch("s1")
+    switch2 = net.addSwitch("s2")
 
-    s2 = net.addSwitch("s2")
-    s1 = net.addSwitch("s1")
-
-    c0 = net.addController("c0")
+    controller = net.addController("c0")
 
     info("*** Configuring wifi nodes\n")
 
     info("*** Associating Stations\n")
-    for i in range(host):
+    for i in range(experiment["clients"]):
         m = "sta%s" % (i + 1)
-        net.addLink(m, s1)
+        net.addLink(m, switch1)
 
-    net.addLink(
-        s2, s1, 1, 10, bw=100
-    )  # initial link parameter default according to mininet
-
-    net.addLink(server, s2, bw=1000)
-
-    net.addLink(dc, s1)
-    net.addLink(ds, s2)
+    net.addLink(switch2, switch1, 1, 10)
+    net.addLink(server, switch2)
 
     info("*** Starting network\n")
     net.build()
-    c0.start()
-    s1.start([c0])
-    s2.start([c0])
+    controller.start()
+    switch2.start([controller])
+    switch1.start([controller])
 
-    time.sleep(5)
-    print("\n ")
-    folder = (
-        "fol_"
-        + str(fol)
-        + "_mode_"
-        + (mod)
-        + "_trace_"
-        + str(nett)
-        + "_host_"
-        + str(host)
-        + "_algo_"
-        + str(algo)
-        + "_protocol_"
-        + str(prot)
-        + "_server_"
-        + str(sertype)
-    )
+    net.waitConnected()
 
-    os.system("mkdir -p /home/raza/Downloads/goDASH/godash/data/" + folder)
+    switch2 = net["s2"]
+    server = net["server"]
+    switch1 = net["s1"]
 
-    with open("/home/raza/Downloads/goDASHbed/config/configure.json") as json_file:
+    return {
+        "stations": stations,
+        "switch2": switch2,
+        "switch1": switch2,
+        "server": server,
+    }
+
+
+def load_experiment_config(experiment: Experiment):
+    with open(experiment["godash_config_path"]) as json_file:
         test_dict = json.load(json_file, object_pairs_hook=OrderedDict)
 
-    test_dict["adapt"] = algo
+    test_dict["adapt"] = experiment["adaptation_algorithm"]
 
-    if prot == "tcp":
+    if experiment["server_protocol"] == "tcp":
         test_dict["quic"] = "off"
         test_dict["url"] = "https://www.godashbed.org/full/bbb_enc_x264_dash.mpd"
     else:
@@ -114,232 +126,139 @@ def topology():
 
     test_dict["serveraddr"] = "off"
 
-    json.dump(
-        test_dict, open("/home/raza/Downloads/goDASH/godash/config/configure.json", "w")
+    json.dump(test_dict, open(experiment["godash_config_path"], "w"))
+
+
+def print_experiment(experiment: Experiment):
+    print("-------------------------------")
+    print(f"Network Trace Type : {experiment['server_type']}\n")
+
+    print("-------------------------------")
+    print(f"Network Trace Mobility : {experiment['mobility']}\n")
+
+    print("-------------------------------")
+    print(f"Number of clients: {experiment['clients']}\n")
+
+    print("-------------------------------")
+    print(f"ABS Algorithm : {experiment['adaptation_algorithm']}\n")
+
+    print("-------------------------------")
+    print(f"Protocol : {experiment['server_protocol']}\n")
+
+
+def get_experiment_folder_name(experiment: Experiment) -> str:
+    experiment_folder = (
+        f"id_{experiment['id']}_mode_{experiment['mode']}_trace_"
+        + f"{experiment['mobility']}_host_{experiment['clients']}_algo_"
+        + f"{experiment['adaptation_algorithm']}_protocol_"
+        + f"{experiment['server_protocol']}_server_{experiment['server_type']}"
     )
+    absolute_experiment_folder = os.path.join(os.getcwd(), experiment_folder)
 
-    st = []
-    for i in range(host):
-        m1 = "sta%s" % (i + 1)
-        m2 = net[m1]
-        st.insert(i, m2)
+    # create folder if not exists
+    pathlib.Path(absolute_experiment_folder).mkdir(parents=True, exist_ok=True)
 
-    switch2 = net["s2"]
-    server = net["server"]
-    # ap= net['ap1']
-    switch1 = net["s1"]
-    dc = net["dc"]
-    ds = net["ds"]
+    return absolute_experiment_folder
 
-    if mod == "3g":
-        bt = 3
-    elif mod == "4g":
-        bt = 4
-    else:
-        bt = 5
 
-    return (
-        st,
-        switch2,
-        server,
-        switch1,
-        host,
-        algo,
-        nett,
-        mod,
-        prot,
-        dc,
-        ds,
-        sertype,
-        fol,
-        bt,
-    )
+def get_client_output_file_name(experiment: Experiment, client) -> str:
+    return os.path.join(get_experiment_folder_name(experiment), str(client))
 
 
 # server settings
 
 
-def server(sr, prot, sertype):
-
-    if sertype == "WSGI":
-        if prot == "quic":
-            sr.cmd(
+def server(server: Host, experiment: Experiment):
+    if experiment["server_type"] == "wsgi":
+        if experiment["server_protocol"] == "quic":
+            server.cmd(
                 "cd /home/raza/Downloads/goDASHbed && sudo systemctl stop apache2.service && caddy start --config ./caddy-config/TestbedTCP/CaddyFilev2QUIC --adapter caddyfile"
             )
             print("......WSGI(caddy) server and quic protocol.....")
         else:
-            sr.cmd(
+            server.cmd(
                 "cd /home/raza/Downloads/goDASHbed && sudo systemctl stop apache2.service && caddy start --config ./caddy-config/TestbedTCP/CaddyFilev2TCP --adapter caddyfile"
             )
             print("......WSGI(caddy) server  and tcp protocol.....")
 
-    elif sertype == "ASGI":
-        if prot == "quic":
+    elif experiment["server_type"] == "asgi":
+        if experiment["server_protocol"] == "quic":
             print(
-                sr.cmd(
+                server.cmd(
                     "cd /home/raza/Downloads/goDASHbed && sudo systemctl stop apache2.service &&  hypercorn hypercorn_goDASHbed_quic:app &"
                 )
             )
             print("......ASGI(hypercorn) server and quic protocol.....")
         else:
             print(
-                sr.cmd(
+                server.cmd(
                     "cd /home/raza/Downloads/goDASHbed && sudo systemctl stop apache2.service && hypercorn hypercorn_goDASHbed:app &"
                 )
             )
             print("......ASGI(hypercorn) server and tcp protocol.....")
 
 
-# pcap capture
-def pcap(mod, host, algo, nett, prot, sertype, fol):
+def pcap(experiment: Experiment):
     print("Pcap capturing s1-eth10 ..........\n")
-    # i coment, bcz it collect pcap of 1st client, will uncomment later if need to collect pcap
-    os.system(
-        "sudo tcpdump -i s1-eth10 -U -w  /home/raza/Downloads/goDASH/godash/data/fol_"
-        + str(fol)
-        + "_mode_"
-        + (mod)
-        + "_trace_"
-        + str(nett)
-        + "_host_"
-        + str(host)
-        + "_algo_"
-        + str(algo)
-        + "_protocol_"
-        + str(prot)
-        + "_server_"
-        + str(sertype)
-        + "/h1_ap.pcap"
-    )
+    os.system(f"tcpdump -i s1-eth10 -U -w {get_experiment_folder_name(experiment)}")
 
 
-# tc script and kill process
+def tc(experiment: Experiment, client: Host):
+    os.system("./topo.sh %s %s" % (experiment["mobility"], client.name))
 
 
-def netcon(mod, nett, host):
-    print(str(mod) + "-" + str(nett) + "  traces.............\n")
-    os.system("sudo ./topo.sh %s %s" % (mod, nett))
-
-
-# tc script
-# def kp():
-
-# os.system('sudo ./killprocess.sh &')
-
-# run godash player
-
-
-def player(mod, client, host, algo, nett, prot, sertype, fol):
-
+def player(experiment: Experiment, client: Host):
     client.cmd(
-        "cd /home/raza/Downloads/goDASH/godash && ./godash -config ./config/configure.json >/home/raza/Downloads/goDASH/godash/data/fol_"
-        + str(fol)
-        + "_mode_"
-        + (mod)
-        + "_trace_"
-        + str(nett)
-        + "_host_"
-        + str(host)
-        + "_algo_"
-        + str(algo)
-        + "_protocol_"
-        + str(prot)
-        + "_server_"
-        + str(sertype)
-        + "/h_"
-        + str(client)
-        + ".txt && echo ....Streaming done_"
-        + str(client)
-    )
-
-
-def ditgr(s):
-    print(s.cmd("cd /home/raza/D-ITG-2.8.1-r1023/bin  && ./ITGRecv"))
-
-
-def ditgs(c, bt):
-    print(
-        c.cmd(
-            "cd /home/raza/D-ITG-2.8.1-r1023/bin && ./ITGSend script_file1"
-            + str(bt)
-            + " -l sender.log -x receiver.log"
-        )
+        f"{experiment['godash_bin_path']} -config"
+        + f"{experiment['godash_config_path']}"
+        + f"> {get_client_output_file_name(experiment, client)}.txt "
+        + f"&& echo ....Streaming done_{client}"
     )
 
 
 if __name__ == "__main__":
     setLogLevel("info")
 
+    experiment: Experiment = {
+        "mobility": "Driving-8",
+        "server_type": "wsgi",
+        "server_protocol": "tcp",
+        "clients": 1,
+        "mode": "5g",
+        "id": 1,
+        "adaptation_algorithm": "bba",
+        "godash_config_path": "/home/raza/Downloads/goDASHbed/config/configure.json",
+        "godash_bin_path": "/home/raza/Downloads/goDASH/godash/godash",
+    }
+
     # station, switch, ser, ap, host, algo, nett, doc, num, mod, prot, dc, ds =  topology()
-    (
-        station,
-        switch,
-        ser,
-        ap,
-        host,
-        algo,
-        nett,
-        mod,
-        prot,
-        dc,
-        ds,
-        st,
-        fol,
-        bt,
-    ) = topology()
-    # CLI(net)
-    a = True
-    b = False
-    c = False
-    d = False
-    e = False
-    f = False
-    g = False
-    h = False
+    topology_response = topology(experiment)
 
-    if a:
-        n = Process(target=pcap, args=(mod, host, algo, nett, prot, st, fol))
-        n.start()
-        d = True
+    # Start pcap on switch 1
+    pcap_process = Process(target=pcap, args=(experiment))
+    pcap_process.start()
 
-    if d:
-        y = Process(
-            target=server,
-            args=(
-                ser,
-                prot,
-                st,
-            ),
+    # Start server
+    server_process = Process(
+        target=server,
+        args=(topology_response["server"], experiment),
+    )
+    server_process.start()
+
+    # Start streaming for each client station
+    for host in topology_response["stations"]:
+        # Start traffic control for node
+        tc_process = Process(
+            target=tc,
+            args=(experiment, host),
         )
-        y.start()
-        e = True
+        tc_process.start()
 
-    if e:
-        nn = Process(
-            target=netcon,
-            args=(
-                mod,
-                nett,
-                host,
-            ),
+        # Start streaming on node
+        print("Start streaming......")
+        player_process = Process(
+            target=player,
+            args=(experiment, host),
         )
-        nn.start()
-        f = True
-    if f:
-        for k in range(host):
-            print("Start streaming......")
-            q = Process(
-                target=player,
-                args=(
-                    mod,
-                    station[k],
-                    host,
-                    algo,
-                    nett,
-                    prot,
-                    st,
-                    fol,
-                ),
-            )
-            q.start()
-            q.join
+        player_process.start()
+        player_process.join()
