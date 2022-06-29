@@ -5,6 +5,7 @@ from collections import OrderedDict
 from multiprocessing import Process
 from typing import List, Literal, TypedDict, Union
 
+from mininet.clean import cleanup
 from mininet.log import info, setLogLevel
 from mininet.net import Mininet
 from mininet.node import Host, Switch
@@ -64,6 +65,7 @@ def topology(experiment: Experiment) -> TopologyResponse:
     """
 
     # Create a network
+    cleanup()
     net = Mininet()
 
     stations = []
@@ -210,7 +212,17 @@ def pcap(experiment: Experiment):
 
 
 def tc(experiment: Experiment, client: Host):
-    client.cmd("./topo.sh %s %s &" % (client.intf(), experiment["mobility"]))
+    proc = client.popen(
+        f"./topo.sh {client.intf()} {experiment['mobility']}",
+        shell=True,
+        stdout=None,
+        stderr=None,
+    )
+
+    try:
+        proc.communicate()
+    finally:
+        proc.kill()
 
 
 def player(experiment: Experiment, client: Host):

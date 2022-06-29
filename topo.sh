@@ -24,42 +24,30 @@ runtime="5 minute"
 endtime=$(date -ud "$runtime" +%s)
 t=1
 j=0
-while [[ $(date -u +%s) -le $endtime ]]
+while [[ true ]]
 do
     
     tc qdisc add dev ${intf} root handle 1: htb default 1
-    
-    
-    # create class 1:1 and limit rate to 6Mbit
-    sudo tc class add dev ${intf} parent 1: classid 1:1 htb rate "${bw_array[t]}"kbit ceil "${bw_array[t]}"kbit
-    
-   
-    #tc qdisc show  dev $1
+    tc class add dev ${intf} parent 1: classid 1:1 htb rate "${bw_array[t]}"kbit ceil "${bw_array[t]}"kbit
+
     echo  ${bw_array[t]}
-    #echo  ${second_link[t]}
     t=$((t + 1))
     sleep 4
-    tc qdisc del dev s2-eth1 root
+    tc qdisc del dev ${intf} root
     
     num=$(ps -ef| grep  godash| wc -l)
     echo "Num ---- ";
     echo $num;
-    if [ $num -eq 4 ]; then
+    if [ $num -eq 1 ]; then
             sleep 1
-            sudo chmod 777 -R /home/raza/Downloads/goDASH/godash/data/
             echo  "Streaming done..."
             echo  "Stop pcap capturing..."
             echo  "Stop server...."
-         #   
+
             sudo pkill -9 tcpdump
             sudo pkill -9 caddy
             sudo pkill -9 hypercorn
-            #cd /home/dash/testbed/D-ITG-2.8.1-r1023/bin/ && ./ITGDec receiver.log 
-            #pkill ITGRecv
-            #b=$((b + 1))
 
             break
     fi
-
-     
 done
