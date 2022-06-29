@@ -161,14 +161,20 @@ def get_experiment_folder_name(experiment: Experiment) -> str:
     return absolute_experiment_folder
 
 
-def get_client_output_file_name(experiment: Experiment, client) -> str:
+def get_client_output_file_name(experiment: Experiment, client: Host) -> str:
     return os.path.join(get_experiment_folder_name(experiment), str(client))
+
+
+def get_pcap_output_file_name(experiment: Experiment) -> str:
+    return os.path.join(get_experiment_folder_name(experiment), f"s1-eth10.pcap")
 
 
 # server settings
 
 
 def server(server: Host, experiment: Experiment):
+    load_experiment_config(experiment)
+
     if experiment["server_type"] == "wsgi":
         if experiment["server_protocol"] == "quic":
             server.cmd(
@@ -200,20 +206,21 @@ def server(server: Host, experiment: Experiment):
 
 def pcap(experiment: Experiment):
     print("Pcap capturing s1-eth10 ..........\n")
-    os.system(f"tcpdump -i s1-eth10 -U -w {get_experiment_folder_name(experiment)}")
+    os.system(f"tcpdump -i s1-eth10 -U -w {get_pcap_output_file_name(experiment)}")
 
 
 def tc(experiment: Experiment, client: Host):
-    os.system("./topo.sh %s %s" % (experiment["mobility"], client.name))
+    client.cmd("./topo.sh %s %s &" % (client.intf(), experiment["mobility"]))
 
 
 def player(experiment: Experiment, client: Host):
-    client.cmd(
-        f"{experiment['godash_bin_path']} -config"
-        + f"{experiment['godash_config_path']}"
-        + f"> {get_client_output_file_name(experiment, client)}.txt "
-        + f"&& echo ....Streaming done_{client}"
+    cmd = (
+        f"{experiment['godash_bin_path']} -config "
+        + f"{experiment['godash_config_path']} "
+        + f"> {get_client_output_file_name(experiment, client)}.txt"
     )
+    print(cmd)
+    print(client.cmd(cmd))
 
 
 if __name__ == "__main__":
@@ -235,7 +242,7 @@ if __name__ == "__main__":
     topology_response = topology(experiment)
 
     # Start pcap on switch 1
-    pcap_process = Process(target=pcap, args=(experiment))
+    pcap_process = Process(target=pcap, args=(experiment,))
     pcap_process.start()
 
     # Start server

@@ -1,5 +1,5 @@
 #!/bin/bash
-mod=$1
+intf=$1
 net=$2
 bw_array=()
 second_link=()
@@ -14,7 +14,7 @@ while IFS=, read -r col1
     #echo "I got:$col1|$col3"
     b=$((b + 1))
     d=$((d + 1))
-done < 'Band_data/Band_data/5g/'$net.csv
+done < 'Band_data/Band_data/5g/'${net}.csv
 
 
 #------------------------------------------------------------------------------------#
@@ -27,11 +27,11 @@ j=0
 while [[ $(date -u +%s) -le $endtime ]]
 do
     
-    tc qdisc add dev s2-eth1 root handle 1: htb default 1
+    tc qdisc add dev ${intf} root handle 1: htb default 1
     
     
     # create class 1:1 and limit rate to 6Mbit
-    sudo tc class add dev s2-eth1 parent 1: classid 1:1 htb rate "${bw_array[t]}"kbit ceil "${bw_array[t]}"kbit
+    sudo tc class add dev ${intf} parent 1: classid 1:1 htb rate "${bw_array[t]}"kbit ceil "${bw_array[t]}"kbit
     
    
     #tc qdisc show  dev $1
