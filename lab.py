@@ -5,7 +5,7 @@ import subprocess
 from collections import OrderedDict
 from multiprocessing import Process
 from time import sleep
-from typing import List, Literal, TypedDict, Union
+from typing import Literal, TypedDict, Union
 
 from mininet.clean import cleanup
 from mininet.log import info, setLogLevel
@@ -19,7 +19,6 @@ class Experiment(TypedDict):
     id: int
     mode: Literal["5g"]
     mobility: NormalizedDataset
-    clients: int
     server_type: Union[Literal["asgi"], Literal["wsgi"]]
     adaptation_algorithm: Union[
         Literal["conventional"], Literal["elastic"], Literal["bba"], Literal["logistic"]
@@ -35,7 +34,7 @@ class TopologyResponse(TypedDict):
     server: Host
 
 
-def topology(experiment: Experiment) -> TopologyResponse:
+def topology() -> TopologyResponse:
     """
     This function is responsible for setting up the mininet topology for the dash
     lab tests.
@@ -59,10 +58,7 @@ def topology(experiment: Experiment) -> TopologyResponse:
     info("*** Configuring wifi nodes\n")
 
     info("*** Associating Stations\n")
-    for i in range(experiment["clients"]):
-        m = "sta%s" % (i + 1)
-        net.addLink(m, switch1)
-
+    net.addLink(client, switch1)
     net.addLink(server, switch1)
 
     info("*** Starting network\n")
@@ -108,9 +104,6 @@ def print_experiment(experiment: Experiment):
     print(f"Network Trace Mobility : {experiment['mobility']['name']}\n")
 
     print("-------------------------------")
-    print(f"Number of clients: {experiment['clients']}\n")
-
-    print("-------------------------------")
     print(f"ABS Algorithm : {experiment['adaptation_algorithm']}\n")
 
     print("-------------------------------")
@@ -120,7 +113,7 @@ def print_experiment(experiment: Experiment):
 def get_experiment_folder_name(experiment: Experiment) -> str:
     experiment_folder = (
         f"id_{experiment['id']}_mode_{experiment['mode']}_trace_"
-        + f"{experiment['mobility']['name']}_host_{experiment['clients']}_algo_"
+        + f"{experiment['mobility']['name']}_algo_"
         + f"{experiment['adaptation_algorithm']}_protocol_"
         + f"{experiment['server_protocol']}_server_{experiment['server_type']}"
     )
@@ -137,7 +130,7 @@ def get_client_output_file_name(experiment: Experiment, client: Host) -> str:
 
 
 def get_pcap_output_file_name(experiment: Experiment) -> str:
-    return os.path.join(get_experiment_folder_name(experiment), f"s1-eth10.pcap")
+    return os.path.join(get_experiment_folder_name(experiment), f"s1-eth2.pcap")
 
 
 # server settings
@@ -176,8 +169,8 @@ def server(server: Host, experiment: Experiment):
 
 
 def pcap(experiment: Experiment):
-    print("Pcap capturing s1-eth10 ..........\n")
-    os.system(f"tcpdump -i s1-eth10 -U -w {get_pcap_output_file_name(experiment)}")
+    print("Pcap capturing s1-eth2 ..........\n")
+    os.system(f"tcpdump -i s1-eth2 -U -w {get_pcap_output_file_name(experiment)}")
 
 
 def send_cmd(client: Host, cmd: str):
@@ -191,7 +184,8 @@ def send_cmd(client: Host, cmd: str):
     try:
         out, err = proc.communicate()
 
-        print(out, err, proc.returncode)
+        if proc.returncode != 0:
+            raise Exception(f"Error for command: {cmd}", err)
 
         return out, err
     finally:
@@ -209,25 +203,31 @@ def tc(experiment: Experiment, client: Host):
     print(f"Download speed: {initial_download_speed}kbps")
     print(f"Upload speed: {initial_upload_speed}kbps")
 
-    filter_command_base = f"tc filter add dev {intf} protocol ip parent 1: prio 1 u32"
+    # create root upload interface
+    send_cmd(client, f"tc qdisc add dev {intf} root handle 1: htb default 1")
 
-    # create root interface
-    send_cmd(client, f"tc qdisc add dev {intf} root handle 1: htb default 30")
-
-    # create initial download class
-    send_cmd(
-        client,
-        f"tc class add dev {intf} parent 1: classid 1:10 htb rate {initial_download_speed}kbps burst 15k",
-    )
     # create initial upload class
     send_cmd(
         client,
-        f"tc class add dev {intf} parent 1: classid 1:20 htb rate {initial_upload_speed}kbps burst 15k",
+        f"tc class add dev {intf} parent 1: classid 1:1 htb rate {initial_upload_speed}kbps",
     )
 
-    # add filters for download and upload traffic to redirect to proper classes
-    send_cmd(client, f"{filter_command_base} match ip dst 0.0.0.0/0 flowid 1:10")
-    send_cmd(client, f"{filter_command_base} match ip src 0.0.0.0/0 flowid 1:20")
+    # create ifb interface to control ingress traffic
+    send_cmd(
+        client,
+        "modprobe ifb && ip link add name ifb0 type ifb && ip link set dev ifb0 up",
+    )
+    send_cmd(
+        client,
+        "tc qdisc add dev ifb0 root handle 2: htb r2q 1"
+        + f" && tc class add dev ifb0 parent 2: classid 2:2 htb rate {initial_download_speed}kbps"
+        + " && tc filter add dev ifb0 parent 2: matchall flowid 2:2",
+    )
+    send_cmd(
+        client,
+        f"tc qdisc add dev {intf} ingress"
+        + f" && tc filter add dev {intf} ingress matchall action mirred egress redirect dev ifb0",
+    )
 
     # sleep before changing values
     sleep(initial_interval)
@@ -245,12 +245,12 @@ def tc(experiment: Experiment, client: Host):
         # change download class rate
         send_cmd(
             client,
-            f"tc class change dev {intf} parent 1: classid 1:10 htb rate {curr_download_speed}kbps burst 15k",
+            f"tc class change dev ifb0 parent 2: classid 2:2 htb rate {curr_download_speed}kbps",
         )
         # change upload class rate
         send_cmd(
             client,
-            f"tc class change dev {intf} parent 1: classid 1:20 htb rate {curr_upload_speed}kbps burst 15k",
+            f"tc class change dev {intf} parent 1: classid 1:1 htb rate {curr_upload_speed}kbps",
         )
 
         # sleep before changing rate again
@@ -258,7 +258,6 @@ def tc(experiment: Experiment, client: Host):
 
         # check if process stopped
         num_processes, _ = send_cmd(client, "ps -ef | grep godash | wc -l")
-        print(send_cmd(client, "ps -ef | grep godash")[0])
         print(f"Number of godash processes: {int(num_processes)}")
 
         if int(num_processes) <= 2:
@@ -286,20 +285,21 @@ if __name__ == "__main__":
 
     normalized_datasets = get_normalized_datasets()
 
+    # a = [i for i in normalized_datasets if "Static" in i["name"]][0]
+
     experiment: Experiment = {
         "mobility": normalized_datasets[0],
         "server_type": "wsgi",
         "server_protocol": "tcp",
-        "clients": 1,
         "mode": "5g",
         "id": 2,
-        "adaptation_algorithm": "bba",
+        "adaptation_algorithm": "conventional",
         "godash_config_path": "/home/raza/Downloads/goDASHbed/config/configure.json",
         "godash_bin_path": "/home/raza/Downloads/goDASH/godash/godash",
     }
 
     # station, switch, ser, ap, host, algo, nett, doc, num, mod, prot, dc, ds =  topology()
-    topology_response = topology(experiment)
+    topology_response = topology()
 
     # Start pcap on switch 1
     pcap_process = Process(target=pcap, args=(experiment,))
