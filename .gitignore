@@ -2,3 +2,4 @@ files
 Band_data
 id_*
 logs
+__pycache__/

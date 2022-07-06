@@ -3,6 +3,7 @@ import os
 import pathlib
 from collections import OrderedDict
 from multiprocessing import Process
+from time import sleep
 from typing import List, Literal, TypedDict, Union
 
 from mininet.clean import cleanup
@@ -10,24 +11,13 @@ from mininet.log import info, setLogLevel
 from mininet.net import Mininet
 from mininet.node import Host, Switch
 
-MobilityType = Union[
-    Literal["Driving-1"],
-    Literal["Driving-10"],
-    Literal["Driving-2"],
-    Literal["Driving-6"],
-    Literal["Driving-7"],
-    Literal["Driving-8"],
-    Literal["Driving-9"],
-    Literal["Static-1"],
-    Literal["Static-2"],
-    Literal["Static-3"],
-]
+from normalize_datasets import NormalizedDataset, get_normalized_datasets
 
 
 class Experiment(TypedDict):
     id: int
     mode: Literal["5g"]
-    mobility: MobilityType
+    mobility: NormalizedDataset
     clients: int
     server_type: Union[Literal["asgi"], Literal["wsgi"]]
     adaptation_algorithm: Union[
@@ -136,7 +126,7 @@ def print_experiment(experiment: Experiment):
     print(f"Network Trace Type : {experiment['server_type']}\n")
 
     print("-------------------------------")
-    print(f"Network Trace Mobility : {experiment['mobility']}\n")
+    print(f"Network Trace Mobility : {experiment['mobility']['name']}\n")
 
     print("-------------------------------")
     print(f"Number of clients: {experiment['clients']}\n")
@@ -151,7 +141,7 @@ def print_experiment(experiment: Experiment):
 def get_experiment_folder_name(experiment: Experiment) -> str:
     experiment_folder = (
         f"id_{experiment['id']}_mode_{experiment['mode']}_trace_"
-        + f"{experiment['mobility']}_host_{experiment['clients']}_algo_"
+        + f"{experiment['mobility']['name']}_host_{experiment['clients']}_algo_"
         + f"{experiment['adaptation_algorithm']}_protocol_"
         + f"{experiment['server_protocol']}_server_{experiment['server_type']}"
     )
@@ -212,17 +202,47 @@ def pcap(experiment: Experiment):
 
 
 def tc(experiment: Experiment, client: Host):
-    proc = client.popen(
-        f"./topo.sh {client.intf()} {experiment['mobility']}",
-        shell=True,
-        stdout=None,
-        stderr=None,
+    intf = client.intf()
+    initial_download_speed = experiment["mobility"]["data"][0].download_kbps
+    initial_upload_speed = experiment["mobility"]["data"][0].upload_kbps
+    initial_interval = experiment["mobility"]["data"][0].change_interval_seconds
+
+    filter_command_base = "tc filter add dev {intf} protocol ip parent 1: prio 1 u32"
+
+    # create root interface
+    client.cmd(f"tc qdisc add dev {intf} root handle 1: htb default 30")
+
+    # create initial download class
+    client.cmd(
+        f"tc class add dev {intf} parent 1:1 classid 1:10 htb rate {initial_download_speed}kbps burst 15k"
+    )
+    # create initial upload class
+    client.cmd(
+        f"tc class add dev {intf} parent 1:1 classid 1:20 htb rate {initial_upload_speed}kbps burst 15k"
     )
 
-    try:
-        proc.communicate()
-    finally:
-        proc.kill()
+    # add filters for download and upload traffic to redirect to proper classes
+    client.cmd(f"{filter_command_base} match ip dst 0.0.0.0/0 flowid 1:10")
+    client.cmd(f"{filter_command_base} match ip src 0.0.0.0/0 flowid 1:20")
+
+    # sleep before changing values
+    sleep(initial_interval)
+
+    for current_data in experiment["mobility"]["data"][1:]:
+        curr_download_speed = current_data.download_kbps
+        curr_upload_speed = current_data.upload_kbps
+        curr_interval = current_data.change_interval_seconds
+
+        # change download class rate
+        client.cmd(
+            f"tc class change dev {intf} parent 1:1 classid 1:10 htb rate {curr_download_speed}kbps burst 15k"
+        )
+        # change upload class rate
+        client.cmd(
+            f"tc class change dev {intf} parent 1:1 classid 1:20 htb rate {curr_upload_speed}kbps burst 15k"
+        )
+        # sleep before changing rate again
+        sleep(curr_interval)
 
 
 def player(experiment: Experiment, client: Host):
@@ -238,8 +258,10 @@ def player(experiment: Experiment, client: Host):
 if __name__ == "__main__":
     setLogLevel("info")
 
+    normalized_datasets = get_normalized_datasets()
+
     experiment: Experiment = {
-        "mobility": "Driving-8",
+        "mobility": normalized_datasets[0],
         "server_type": "wsgi",
         "server_protocol": "tcp",
         "clients": 1,
