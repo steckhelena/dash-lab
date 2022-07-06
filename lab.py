@@ -30,9 +30,8 @@ class Experiment(TypedDict):
 
 
 class TopologyResponse(TypedDict):
-    stations: List[Host]
+    client: Host
     switch1: Switch
-    switch2: Switch
     server: Host
 
 
@@ -42,36 +41,19 @@ def topology(experiment: Experiment) -> TopologyResponse:
     lab tests.
 
     The topology is as follows:
-    ┌────────┐
-    │Client 1├───┐
-    └────────┘   │
-        .        │
-        .        │ ┌────────┐       ┌────────┐     ┌──────┐
-        .  ──────┼─┤Swith s1├───────┤Swith s2├─────┤Server│
-        .        │ └────────┘       └────────┘     └──────┘
-        .        │
-    ┌────────┐   │
-    │Client N├───┘
-    └────────┘
+    ┌────────┐     ┌────────┐    ┌──────┐
+    │Client 1├─────┤Swith s1├────┤Server│
+    └────────┘     └────────┘    └──────┘
     """
 
     # Create a network
     cleanup()
     net = Mininet()
 
-    stations = []
-
-    info("*** Creating nodes\n")
-    for i in range(experiment["clients"]):
-        m = "sta%s" % (i + 1)
-        j = i + 1
-        stations.insert(i, net.addHost(m, ip="10.0.0.2%s/24" % (j)))
-
+    info("*** Creating node\n")
+    client = net.addHost("sta1", ip="10.0.0.21/24")
     server = net.addHost("server", ip="10.0.0.1/24")
-
     switch1 = net.addSwitch("s1")
-    switch2 = net.addSwitch("s2")
-
     controller = net.addController("c0")
 
     info("*** Configuring wifi nodes\n")
@@ -81,25 +63,21 @@ def topology(experiment: Experiment) -> TopologyResponse:
         m = "sta%s" % (i + 1)
         net.addLink(m, switch1)
 
-    net.addLink(switch2, switch1, 1, 10)
-    net.addLink(server, switch2)
+    net.addLink(server, switch1)
 
     info("*** Starting network\n")
     net.build()
     controller.start()
-    switch2.start([controller])
     switch1.start([controller])
 
     net.waitConnected()
 
-    switch2 = net["s2"]
     server = net["server"]
     switch1 = net["s1"]
 
     return {
-        "stations": stations,
-        "switch2": switch2,
-        "switch1": switch2,
+        "client": client,
+        "switch1": switch1,
         "server": server,
     }
 
@@ -211,7 +189,11 @@ def send_cmd(client: Host, cmd: str):
         universal_newlines=True,
     )
     try:
-        return proc.communicate()
+        out, err = proc.communicate()
+
+        print(out, err, proc.returncode)
+
+        return out, err
     finally:
         proc.kill()
 
@@ -310,8 +292,8 @@ if __name__ == "__main__":
         "server_protocol": "tcp",
         "clients": 1,
         "mode": "5g",
-        "id": 1,
-        "adaptation_algorithm": "conventional",
+        "id": 2,
+        "adaptation_algorithm": "bba",
         "godash_config_path": "/home/raza/Downloads/goDASHbed/config/configure.json",
         "godash_bin_path": "/home/raza/Downloads/goDASH/godash/godash",
     }
@@ -330,25 +312,23 @@ if __name__ == "__main__":
     )
     server_process.start()
 
-    # Start streaming for each client station
-    for host in topology_response["stations"]:
-        # Start traffic control for node
-        tc_process = Process(
-            target=tc,
-            args=(experiment, host),
-        )
-        tc_process.start()
+    # Start traffic control for node
+    tc_process = Process(
+        target=tc,
+        args=(experiment, topology_response["client"]),
+    )
+    tc_process.start()
 
-        # Start streaming on node
-        print("Start streaming......")
-        player_process = Process(
-            target=player,
-            args=(experiment, host),
-        )
-        player_process.start()
-        player_process.join()
-        tc_process.join()
-        print("Streaming done......")
+    # Start streaming on node
+    print("Start streaming......")
+    player_process = Process(
+        target=player,
+        args=(experiment, topology_response["client"]),
+    )
+    player_process.start()
+    player_process.join()
+    tc_process.join()
+    print("Streaming done......")
 
     print("Stopping pcap capturing......")
     pcap_process.kill()
