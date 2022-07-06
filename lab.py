@@ -293,7 +293,7 @@ if __name__ == "__main__":
         "server_protocol": "tcp",
         "mode": "5g",
         "id": 2,
-        "adaptation_algorithm": "conventional",
+        "adaptation_algorithm": "bba",
         "godash_config_path": "/home/raza/Downloads/goDASHbed/config/configure.json",
         "godash_bin_path": "/home/raza/Downloads/goDASH/godash/godash",
     }
