@@ -49,7 +49,10 @@ def get_normalized_datasets() -> List[NormalizedDataset]:
         ] = np.nan
         filtered_data["DL_bitrate"] = filtered_data["DL_bitrate"].interpolate()
         filtered_data["UL_bitrate"] = filtered_data["UL_bitrate"].interpolate()
-        filtered_data.fillna(0.001, inplace=True)
+        filtered_data["DL_bitrate"].values[filtered_data["DL_bitrate"] < 0.001] = np.nan
+        filtered_data["UL_bitrate"].values[filtered_data["UL_bitrate"] < 0.001] = np.nan
+        filtered_data["DL_bitrate"] = filtered_data["DL_bitrate"].interpolate()
+        filtered_data["UL_bitrate"] = filtered_data["UL_bitrate"].interpolate()
 
         # Remove repeated timestamps and State column by taking the mean
         filtered_data = filtered_data.groupby("Timestamp").mean().reset_index()
