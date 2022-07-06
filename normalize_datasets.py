@@ -1,5 +1,4 @@
 import pathlib
-from dataclasses import dataclass
 from typing import List, TypedDict
 
 import pandas as pd
@@ -8,8 +7,7 @@ from pandas.core.frame import DataFrame
 from datasets5G import datasets5G
 
 
-@dataclass
-class Limits:
+class Limits(TypedDict):
     upload_kbps: float
     download_kbps: float
     change_interval_seconds: int

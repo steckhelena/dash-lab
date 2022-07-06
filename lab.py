@@ -1,6 +1,7 @@
 import json
 import os
 import pathlib
+import subprocess
 from collections import OrderedDict
 from multiprocessing import Process
 from time import sleep
@@ -201,48 +202,91 @@ def pcap(experiment: Experiment):
     os.system(f"tcpdump -i s1-eth10 -U -w {get_pcap_output_file_name(experiment)}")
 
 
+def send_cmd(client: Host, cmd: str):
+    proc = client.popen(
+        cmd,
+        shell=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
+        universal_newlines=True,
+    )
+    try:
+        return proc.communicate()
+    finally:
+        proc.kill()
+
+
 def tc(experiment: Experiment, client: Host):
     intf = client.intf()
-    initial_download_speed = experiment["mobility"]["data"][0].download_kbps
-    initial_upload_speed = experiment["mobility"]["data"][0].upload_kbps
-    initial_interval = experiment["mobility"]["data"][0].change_interval_seconds
+    initial_data = experiment["mobility"]["data"][0]
+    initial_download_speed = initial_data["download_kbps"]
+    initial_upload_speed = initial_data["upload_kbps"]
+    initial_interval = initial_data["change_interval_seconds"]
 
-    filter_command_base = "tc filter add dev {intf} protocol ip parent 1: prio 1 u32"
+    print(f"Setting initial data for {initial_interval}s:")
+    print(f"Download speed: {initial_download_speed}kbps")
+    print(f"Upload speed: {initial_upload_speed}kbps")
+
+    filter_command_base = f"tc filter add dev {intf} protocol ip parent 1: prio 1 u32"
 
     # create root interface
-    client.cmd(f"tc qdisc add dev {intf} root handle 1: htb default 30")
+    send_cmd(client, f"tc qdisc add dev {intf} root handle 1: htb default 30")
 
     # create initial download class
-    client.cmd(
-        f"tc class add dev {intf} parent 1:1 classid 1:10 htb rate {initial_download_speed}kbps burst 15k"
+    send_cmd(
+        client,
+        f"tc class add dev {intf} parent 1: classid 1:10 htb rate {initial_download_speed}kbps burst 15k",
     )
     # create initial upload class
-    client.cmd(
-        f"tc class add dev {intf} parent 1:1 classid 1:20 htb rate {initial_upload_speed}kbps burst 15k"
+    send_cmd(
+        client,
+        f"tc class add dev {intf} parent 1: classid 1:20 htb rate {initial_upload_speed}kbps burst 15k",
     )
 
     # add filters for download and upload traffic to redirect to proper classes
-    client.cmd(f"{filter_command_base} match ip dst 0.0.0.0/0 flowid 1:10")
-    client.cmd(f"{filter_command_base} match ip src 0.0.0.0/0 flowid 1:20")
+    send_cmd(client, f"{filter_command_base} match ip dst 0.0.0.0/0 flowid 1:10")
+    send_cmd(client, f"{filter_command_base} match ip src 0.0.0.0/0 flowid 1:20")
 
     # sleep before changing values
     sleep(initial_interval)
 
+    failed_processes = 0
     for current_data in experiment["mobility"]["data"][1:]:
-        curr_download_speed = current_data.download_kbps
-        curr_upload_speed = current_data.upload_kbps
-        curr_interval = current_data.change_interval_seconds
+        curr_download_speed = current_data["download_kbps"]
+        curr_upload_speed = current_data["upload_kbps"]
+        curr_interval = current_data["change_interval_seconds"]
+
+        print(f"Setting data for {curr_interval}s:")
+        print(f"Download speed: {curr_download_speed}kbps")
+        print(f"Upload speed: {curr_upload_speed}kbps")
 
         # change download class rate
-        client.cmd(
-            f"tc class change dev {intf} parent 1:1 classid 1:10 htb rate {curr_download_speed}kbps burst 15k"
+        send_cmd(
+            client,
+            f"tc class change dev {intf} parent 1: classid 1:10 htb rate {curr_download_speed}kbps burst 15k",
         )
         # change upload class rate
-        client.cmd(
-            f"tc class change dev {intf} parent 1:1 classid 1:20 htb rate {curr_upload_speed}kbps burst 15k"
+        send_cmd(
+            client,
+            f"tc class change dev {intf} parent 1: classid 1:20 htb rate {curr_upload_speed}kbps burst 15k",
         )
+
         # sleep before changing rate again
         sleep(curr_interval)
+
+        # check if process stopped
+        num_processes, _ = send_cmd(client, "ps -ef | grep godash | wc -l")
+        print(send_cmd(client, "ps -ef | grep godash")[0])
+        print(f"Number of godash processes: {int(num_processes)}")
+
+        if int(num_processes) <= 2:
+            failed_processes += 1
+        else:
+            failed_processes = 0
+
+        if failed_processes > 3:
+            print("No godash process running, stopping traffic control")
+            break
 
 
 def player(experiment: Experiment, client: Host):
@@ -267,7 +311,7 @@ if __name__ == "__main__":
         "clients": 1,
         "mode": "5g",
         "id": 1,
-        "adaptation_algorithm": "bba",
+        "adaptation_algorithm": "conventional",
         "godash_config_path": "/home/raza/Downloads/goDASHbed/config/configure.json",
         "godash_bin_path": "/home/raza/Downloads/goDASH/godash/godash",
     }
@@ -303,3 +347,13 @@ if __name__ == "__main__":
         )
         player_process.start()
         player_process.join()
+        tc_process.join()
+        print("Streaming done......")
+
+    print("Stopping pcap capturing......")
+    pcap_process.kill()
+
+    print("Stopping server......")
+    server_process.kill()
+
+    cleanup()
