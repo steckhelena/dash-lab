@@ -28,6 +28,13 @@ class Experiment(TypedDict):
     godash_bin_path: str
 
 
+class ExperimentResult(TypedDict):
+    experiment: Experiment
+    experiment_godash_result_path: str
+    experiment_host_pcap_path: str
+    had_to_restart_tc: bool
+
+
 class TopologyResponse(TypedDict):
     client: Host
     switch1: Switch
@@ -112,7 +119,8 @@ def print_experiment(experiment: Experiment):
 
 def get_experiment_folder_name(experiment: Experiment) -> str:
     experiment_folder = (
-        f"id_{experiment['id']}_mode_{experiment['mode']}_trace_"
+        "experiment_results/"
+        + f"id_{experiment['id']}_mode_{experiment['mode']}_trace_"
         + f"{experiment['mobility']['name']}_algo_"
         + f"{experiment['adaptation_algorithm']}_protocol_"
         + f"{experiment['server_protocol']}_server_{experiment['server_type']}"
@@ -129,8 +137,8 @@ def get_client_output_file_name(experiment: Experiment, client: Host) -> str:
     return os.path.join(get_experiment_folder_name(experiment), str(client))
 
 
-def get_pcap_output_file_name(experiment: Experiment) -> str:
-    return os.path.join(get_experiment_folder_name(experiment), f"s1-eth2.pcap")
+def get_pcap_output_file_name(experiment: Experiment, client: Host) -> str:
+    return os.path.join(get_experiment_folder_name(experiment), f"{client.intf()}.pcap")
 
 
 # server settings
@@ -168,9 +176,12 @@ def server(server: Host, experiment: Experiment):
             print("......ASGI(hypercorn) server and tcp protocol.....")
 
 
-def pcap(experiment: Experiment):
-    print("Pcap capturing s1-eth2 ..........\n")
-    os.system(f"tcpdump -i s1-eth2 -U -w {get_pcap_output_file_name(experiment)}")
+def pcap(experiment: Experiment, client: Host):
+    print(f"Pcap capturing {client.intf()} ..........\n")
+    os.system(
+        f"tcpdump -i {client.intf()} -U -w"
+        + f" {get_pcap_output_file_name(experiment, client)}"
+    )
 
 
 def send_cmd(client: Host, cmd: str):
@@ -269,6 +280,10 @@ def tc(experiment: Experiment, client: Host):
             print("No godash process running, stopping traffic control")
             break
 
+    # Cleanup TC on end
+    send_cmd(client, f"tc qdisc del dev {intf} ingress && tc qdisc del dev ifb0 root")
+    send_cmd(client, f"tc qdisc del dev {intf} root")
+
 
 def player(experiment: Experiment, client: Host):
     cmd = (
@@ -280,29 +295,12 @@ def player(experiment: Experiment, client: Host):
     print(client.cmd(cmd))
 
 
-if __name__ == "__main__":
-    setLogLevel("info")
-
-    normalized_datasets = get_normalized_datasets()
-
-    # a = [i for i in normalized_datasets if "Static" in i["name"]][0]
-
-    experiment: Experiment = {
-        "mobility": normalized_datasets[0],
-        "server_type": "wsgi",
-        "server_protocol": "tcp",
-        "mode": "5g",
-        "id": 2,
-        "adaptation_algorithm": "bba",
-        "godash_config_path": "/home/raza/Downloads/goDASHbed/config/configure.json",
-        "godash_bin_path": "/home/raza/Downloads/goDASH/godash/godash",
-    }
-
-    # station, switch, ser, ap, host, algo, nett, doc, num, mod, prot, dc, ds =  topology()
+def run_experiment(experiment: Experiment) -> ExperimentResult:
+    # build topology for experiment
     topology_response = topology()
 
-    # Start pcap on switch 1
-    pcap_process = Process(target=pcap, args=(experiment,))
+    # Start pcap on client
+    pcap_process = Process(target=pcap, args=(experiment, topology_response["client"]))
     pcap_process.start()
 
     # Start server
@@ -318,6 +316,7 @@ if __name__ == "__main__":
         args=(experiment, topology_response["client"]),
     )
     tc_process.start()
+    had_to_restart_tc = False
 
     # Start streaming on node
     print("Start streaming......")
@@ -326,8 +325,19 @@ if __name__ == "__main__":
         args=(experiment, topology_response["client"]),
     )
     player_process.start()
-    player_process.join()
     tc_process.join()
+
+    # If player did not stop streaming, restart TC
+    while player_process.is_alive():
+        had_to_restart_tc = True
+        tc_process = Process(
+            target=tc,
+            args=(experiment, topology_response["client"]),
+        )
+        tc_process.start()
+        tc_process.join()
+
+    player_process.join()
     print("Streaming done......")
 
     print("Stopping pcap capturing......")
@@ -336,4 +346,32 @@ if __name__ == "__main__":
     print("Stopping server......")
     server_process.kill()
 
-    cleanup()
+    return {
+        "experiment": experiment,
+        "experiment_godash_result_path": get_client_output_file_name(
+            experiment, topology_response["client"]
+        ),
+        "experiment_host_pcap_path": get_pcap_output_file_name(
+            experiment, topology_response["client"]
+        ),
+        "had_to_restart_tc": had_to_restart_tc,
+    }
+
+
+if __name__ == "__main__":
+    setLogLevel("info")
+
+    normalized_datasets = get_normalized_datasets()
+
+    experiment: Experiment = {
+        "mobility": normalized_datasets[0],
+        "server_type": "wsgi",
+        "server_protocol": "tcp",
+        "mode": "5g",
+        "id": 2,
+        "adaptation_algorithm": "bba",
+        "godash_config_path": "/home/raza/Downloads/goDASHbed/config/configure.json",
+        "godash_bin_path": "/home/raza/Downloads/goDASH/godash/godash",
+    }
+
+    print(run_experiment(experiment))

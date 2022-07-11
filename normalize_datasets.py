@@ -47,7 +47,6 @@ def get_normalized_datasets() -> List[NormalizedDataset]:
         filtered_data.loc[
             filtered_data["State"] == "I", ["DL_bitrate", "UL_bitrate"]
         ] = np.nan
-        filtered_data.interpolate(inplace=True)
         filtered_data["DL_bitrate"].values[filtered_data["DL_bitrate"] < 0.001] = np.nan
         filtered_data["UL_bitrate"].values[filtered_data["UL_bitrate"] < 0.001] = np.nan
         filtered_data.interpolate(inplace=True)
