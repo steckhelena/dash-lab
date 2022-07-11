@@ -178,9 +178,10 @@ def server(server: Host, experiment: Experiment):
 
 def pcap(experiment: Experiment, client: Host):
     print(f"Pcap capturing {client.intf()} ..........\n")
-    os.system(
+    send_cmd(
+        client,
         f"tcpdump -i {client.intf()} -U -w"
-        + f" {get_pcap_output_file_name(experiment, client)}"
+        + f" {get_pcap_output_file_name(experiment, client)}",
     )
 
 
