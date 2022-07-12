@@ -1,5 +1,4 @@
 import re
-from typing import TypedDict
 
 import numpy as np
 import pandas as pd
@@ -7,10 +6,6 @@ from scapy.all import rdpcap
 from scapy.layers.inet import IP, TCP
 
 from lab import ExperimentResult
-
-
-class ProcessedExperiment(TypedDict):
-    ...
 
 
 def Average(lst):
@@ -27,10 +22,10 @@ def get_godash_result_as_dataframe(godash_result_path: str) -> pd.DataFrame:
         f.writelines([line for line in lines if not re.match(r"^[0-9]+$", line)])
         f.truncate()
 
-    return pd.read_csv(godash_result_path, delim_whitespace=True)
+    return pd.read_csv(godash_result_path, delim_whitespace=True)  # type: ignore
 
 
-def process_pcap(experiment_result: ExperimentResult) -> ProcessedExperiment:
+def process_pcap(experiment_result: ExperimentResult):
     server_ip = experiment_result["server_ip"]
 
     pcap = rdpcap(experiment_result["experiment_host_pcap_path"])
