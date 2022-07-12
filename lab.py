@@ -397,7 +397,7 @@ def get_experiment_ordered_hash(experiment: Experiment):
         + f"{experiment['mode']}"
         + f"{experiment['adaptation_algorithm']}"
         + f"{experiment['server_protocol']}"
-        + f"{experiment[server_type]}"
+        + f"{experiment['server_type']}"
         + f"{experiment['repetition']}"
     )
 
@@ -437,7 +437,7 @@ if __name__ == "__main__":
     dataset_modes = ["4g", "4g", "4g", "5g", "5g", "5g", "5g", "5g"]
 
     server_types = ["wsgi"]
-    server_protocols = ["tcp"]
+    server_protocols = ["tcp", "quic"]
     adaptation_algorithms = ["bba", "conventional", "elastic", "logistic"]
 
     normalized_datasets = get_normalized_datasets(datasets)
@@ -445,14 +445,15 @@ if __name__ == "__main__":
     experiments_per_combination = 5
 
     done_experiment_hashes = set()
-    with open(get_experiment_checkpoint_file_name()) as f:
-        done_experiment_hashes = set(f.readlines())
+    if os.path.exists(get_experiment_checkpoint_file_name()):
+        with open(get_experiment_checkpoint_file_name()) as f:
+            done_experiment_hashes = set(f.read().splitlines())
 
-    for i in range(experiments_per_combination):
-        for mpd_path in mpd_paths:
-            for dataset, mode in zip(normalized_datasets, dataset_modes):
-                for server_type in server_types:
-                    for server_protocol in server_protocols:
+    for mpd_path in mpd_paths:
+        for dataset, mode in zip(normalized_datasets, dataset_modes):
+            for server_type in server_types:
+                for server_protocol in server_protocols:
+                    for i in range(experiments_per_combination):
                         experiment: Experiment = {
                             "mobility": dataset,
                             "server_type": server_type,
@@ -494,5 +495,5 @@ if __name__ == "__main__":
 
                         print("Saving to checkpoint")
                         with open(get_experiment_checkpoint_file_name(), "a") as f:
-                            f.write(f"\n{experiment_ordered_hash}")
+                            f.write(f"{experiment_ordered_hash}\n")
                             done_experiment_hashes.add(experiment_ordered_hash)
