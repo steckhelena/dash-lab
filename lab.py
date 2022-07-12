@@ -136,11 +136,12 @@ def print_experiment(experiment: Experiment):
 
 def get_experiment_folder_name(experiment: Experiment) -> str:
     experiment_folder = (
-        "experiment_results/"
-        + f"id_{experiment['id']}_mode_{experiment['mode']}_trace_"
-        + f"{experiment['mobility']['name']}_algo_"
-        + f"{experiment['adaptation_algorithm']}_protocol_"
-        + f"{experiment['server_protocol']}_server_{experiment['server_type']}"
+        f"experiment_results/{experiment['mode']}/"
+        + f"{experiment['mobility']['name']}/"
+        + f"{experiment['mpd_path'].split('/')[3]}/"
+        + f"{experiment['adaptation_algorithm']}/"
+        + f"{experiment['server_protocol']}/{experiment['server_type']}/"
+        + f"id_{experiment['id']}"
     )
     absolute_experiment_folder = os.path.join(os.getcwd(), experiment_folder)
 
