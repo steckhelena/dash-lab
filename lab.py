@@ -4,16 +4,29 @@ import pathlib
 import subprocess
 import time
 from collections import OrderedDict
-from multiprocessing import Process
+from multiprocessing import Process, Value
 from time import sleep
 from typing import Literal, TypedDict, Union
 
+import numpy as np
 from mininet.clean import cleanup
 from mininet.log import info, setLogLevel
 from mininet.net import Mininet
 from mininet.node import Host, Switch
 
 from normalize_datasets import NormalizedDataset, get_normalized_datasets
+from process_results import process_pcap
+
+
+class NpEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, np.integer):
+            return int(obj)
+        if isinstance(obj, np.floating):
+            return float(obj)
+        if isinstance(obj, np.ndarray):
+            return obj.tolist()
+        return super(NpEncoder, self).default(obj)
 
 
 class Experiment(TypedDict):
@@ -97,10 +110,10 @@ def load_experiment_config(experiment: Experiment):
 
     if experiment["server_protocol"] == "tcp":
         test_dict["quic"] = "off"
-        test_dict["url"] = "https://www.godashbed.org/full/bbb_enc_x264_dash.mpd"
+        test_dict["url"] = f"https://www.godashbed.org/{experiment['mpd_path']}"
     else:
         test_dict["quic"] = "on"
-        test_dict["url"] = "https://www.godashbed.org:4444/full/bbb_enc_x264_dash.mpd"
+        test_dict["url"] = f"https://www.godashbed.org:4444/{experiment['mpd_path']}"
 
     test_dict["serveraddr"] = "off"
 
@@ -212,7 +225,7 @@ def send_cmd(client: Host, cmd: str):
         proc.kill()
 
 
-def tc(experiment: Experiment, client: Host):
+def tc(experiment: Experiment, client: Host, is_finished):
     intf = client.intf()
     initial_data = experiment["mobility"]["data"][0]
     initial_download_speed = initial_data["download_kbps"]
@@ -252,7 +265,6 @@ def tc(experiment: Experiment, client: Host):
     # sleep before changing values
     sleep(initial_interval)
 
-    failed_processes = 0
     for current_data in experiment["mobility"]["data"][1:]:
         curr_download_speed = current_data["download_kbps"]
         curr_upload_speed = current_data["upload_kbps"]
@@ -277,15 +289,7 @@ def tc(experiment: Experiment, client: Host):
         sleep(curr_interval)
 
         # check if process stopped
-        num_processes, _ = send_cmd(client, "ps -ef | grep godash | wc -l")
-        print(f"Number of godash processes: {int(num_processes)}")
-
-        if int(num_processes) <= 2:
-            failed_processes += 1
-        else:
-            failed_processes = 0
-
-        if failed_processes > 3:
+        if is_finished.value == True:
             print("No godash process running, stopping traffic control")
             break
 
@@ -294,7 +298,7 @@ def tc(experiment: Experiment, client: Host):
     send_cmd(client, f"tc qdisc del dev {intf} root")
 
 
-def player(experiment: Experiment, client: Host):
+def player(experiment: Experiment, client: Host, is_finished):
     cmd = (
         f"{experiment['godash_bin_path']} -config "
         + f"{experiment['godash_config_path']} "
@@ -302,6 +306,7 @@ def player(experiment: Experiment, client: Host):
     )
     print(cmd)
     print(client.cmd(cmd))
+    is_finished.value = True
 
 
 def run_experiment(experiment: Experiment) -> ExperimentResult:
@@ -320,9 +325,10 @@ def run_experiment(experiment: Experiment) -> ExperimentResult:
     server_process.start()
 
     # Start traffic control for node
+    is_finished_streaming = Value("i", False)
     tc_process = Process(
         target=tc,
-        args=(experiment, topology_response["client"]),
+        args=(experiment, topology_response["client"], is_finished_streaming),
     )
     tc_process.start()
     had_to_restart_tc = False
@@ -331,7 +337,7 @@ def run_experiment(experiment: Experiment) -> ExperimentResult:
     print("Start streaming......")
     player_process = Process(
         target=player,
-        args=(experiment, topology_response["client"]),
+        args=(experiment, topology_response["client"], is_finished_streaming),
     )
     player_process.start()
     tc_process.join()
@@ -374,49 +380,19 @@ if __name__ == "__main__":
 
     mpd_paths = [
         "4K_non_copyright_dataset/10_sec/x264/bbb/DASH_Files/full/bbb_enc_x264_dash.mpd",
-        "4K_non_copyright_dataset/10_sec/x264/bbb/DASH_Files/full/dash_audio.mpd",
-        "4K_non_copyright_dataset/10_sec/x264/bbb/DASH_Files/full/dash_video_audio.mpd",
-        "4K_non_copyright_dataset/10_sec/x264/sintel/DASH_Files/full/dash_audio.mpd",
-        "4K_non_copyright_dataset/10_sec/x264/sintel/DASH_Files/full/dash_video_audio.mpd",
         "4K_non_copyright_dataset/10_sec/x264/sintel/DASH_Files/full/sintel_enc_x264_dash.mpd",
-        "4K_non_copyright_dataset/10_sec/x264/tearsofsteel/DASH_Files/full/dash_audio.mpd",
-        "4K_non_copyright_dataset/10_sec/x264/tearsofsteel/DASH_Files/full/dash_video_audio.mpd",
         "4K_non_copyright_dataset/10_sec/x264/tearsofsteel/DASH_Files/full/tearsofsteel_enc_x264_dash.mpd",
         "4K_non_copyright_dataset/2_sec/x264/bbb/DASH_Files/full/bbb_enc_x264_dash.mpd",
-        "4K_non_copyright_dataset/2_sec/x264/bbb/DASH_Files/full/dash_audio.mpd",
-        "4K_non_copyright_dataset/2_sec/x264/bbb/DASH_Files/full/dash_video_audio.mpd",
-        "4K_non_copyright_dataset/2_sec/x264/sintel/DASH_Files/full/dash_audio.mpd",
-        "4K_non_copyright_dataset/2_sec/x264/sintel/DASH_Files/full/dash_video_audio.mpd",
         "4K_non_copyright_dataset/2_sec/x264/sintel/DASH_Files/full/sintel_enc_x264_dash.mpd",
-        "4K_non_copyright_dataset/2_sec/x264/tearsofsteel/DASH_Files/full/dash_audio.mpd",
-        "4K_non_copyright_dataset/2_sec/x264/tearsofsteel/DASH_Files/full/dash_video_audio.mpd",
         "4K_non_copyright_dataset/2_sec/x264/tearsofsteel/DASH_Files/full/tearsofsteel_enc_x264_dash.mpd",
         "4K_non_copyright_dataset/4_sec/x264/bbb/DASH_Files/full/bbb_enc_x264_dash.mpd",
-        "4K_non_copyright_dataset/4_sec/x264/bbb/DASH_Files/full/dash_audio.mpd",
-        "4K_non_copyright_dataset/4_sec/x264/bbb/DASH_Files/full/dash_video_audio.mpd",
-        "4K_non_copyright_dataset/4_sec/x264/sintel/DASH_Files/full/dash_audio.mpd",
-        "4K_non_copyright_dataset/4_sec/x264/sintel/DASH_Files/full/dash_video_audio.mpd",
         "4K_non_copyright_dataset/4_sec/x264/sintel/DASH_Files/full/sintel_enc_x264_dash.mpd",
-        "4K_non_copyright_dataset/4_sec/x264/tearsofsteel/DASH_Files/full/dash_audio.mpd",
-        "4K_non_copyright_dataset/4_sec/x264/tearsofsteel/DASH_Files/full/dash_video_audio.mpd",
         "4K_non_copyright_dataset/4_sec/x264/tearsofsteel/DASH_Files/full/tearsofsteel_enc_x264_dash.mpd",
         "4K_non_copyright_dataset/6_sec/x264/bbb/DASH_Files/full/bbb_enc_x264_dash.mpd",
-        "4K_non_copyright_dataset/6_sec/x264/bbb/DASH_Files/full/dash_audio.mpd",
-        "4K_non_copyright_dataset/6_sec/x264/bbb/DASH_Files/full/dash_video_audio.mpd",
-        "4K_non_copyright_dataset/6_sec/x264/sintel/DASH_Files/full/dash_audio.mpd",
-        "4K_non_copyright_dataset/6_sec/x264/sintel/DASH_Files/full/dash_video_audio.mpd",
         "4K_non_copyright_dataset/6_sec/x264/sintel/DASH_Files/full/sintel_enc_x264_dash.mpd",
-        "4K_non_copyright_dataset/6_sec/x264/tearsofsteel/DASH_Files/full/dash_audio.mpd",
-        "4K_non_copyright_dataset/6_sec/x264/tearsofsteel/DASH_Files/full/dash_video_audio.mpd",
         "4K_non_copyright_dataset/6_sec/x264/tearsofsteel/DASH_Files/full/tearsofsteel_enc_x264_dash.mpd",
         "4K_non_copyright_dataset/8_sec/x264/bbb/DASH_Files/full/bbb_enc_x264_dash.mpd",
-        "4K_non_copyright_dataset/8_sec/x264/bbb/DASH_Files/full/dash_audio.mpd",
-        "4K_non_copyright_dataset/8_sec/x264/bbb/DASH_Files/full/dash_video_audio.mpd",
-        "4K_non_copyright_dataset/8_sec/x264/sintel/DASH_Files/full/dash_audio.mpd",
-        "4K_non_copyright_dataset/8_sec/x264/sintel/DASH_Files/full/dash_video_audio.mpd",
         "4K_non_copyright_dataset/8_sec/x264/sintel/DASH_Files/full/sintel_enc_x264_dash.mpd",
-        "4K_non_copyright_dataset/8_sec/x264/tearsofsteel/DASH_Files/full/dash_audio.mpd",
-        "4K_non_copyright_dataset/8_sec/x264/tearsofsteel/DASH_Files/full/dash_video_audio.mpd",
         "4K_non_copyright_dataset/8_sec/x264/tearsofsteel/DASH_Files/full/tearsofsteel_enc_x264_dash.mpd",
     ]
 
@@ -444,7 +420,7 @@ if __name__ == "__main__":
             for server_protocol in server_protocols:
                 for mpd_path in mpd_paths:
                     print("Starting experiment for: ")
-                    print(f"Dataset: {dataset}")
+                    print(f"Dataset: {dataset['name']}")
                     print(f"Server type: {server_type}")
                     print(f"Server protocol: {server_protocol}")
                     print(f"Server mpd: {mpd_path}")
@@ -458,9 +434,17 @@ if __name__ == "__main__":
                         "adaptation_algorithm": "bba",
                         "godash_config_path": "/home/raza/Downloads/goDASHbed/config/configure.json",
                         "godash_bin_path": "/home/raza/Downloads/goDASH/godash/godash",
+                        "mpd_path": mpd_path,
                     }  # type: ignore
 
                     experiment_result = run_experiment(experiment)
 
-                    with open(get_experiment_result_file_name(experiment_result)) as f:
-                        json.dump(experiment_result, f)
+                    with open(
+                        get_experiment_result_file_name(experiment_result), "w"
+                    ) as f:
+                        result = json.dumps(experiment_result, cls=NpEncoder)
+                        print(result)
+                        f.write(result)
+
+                    print("Processing pcap result")
+                    process_pcap(experiment_result)

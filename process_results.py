@@ -1,11 +1,13 @@
 import re
+from typing import TYPE_CHECKING
 
 import numpy as np
 import pandas as pd
 from scapy.all import rdpcap
 from scapy.layers.inet import IP, TCP
 
-from lab import ExperimentResult
+if TYPE_CHECKING:
+    from lab import ExperimentResult
 
 
 def Average(lst):
@@ -25,7 +27,7 @@ def get_godash_result_as_dataframe(godash_result_path: str) -> pd.DataFrame:
     return pd.read_csv(godash_result_path, delim_whitespace=True)  # type: ignore
 
 
-def process_pcap(experiment_result: ExperimentResult):
+def process_pcap(experiment_result: "ExperimentResult"):
     server_ip = experiment_result["server_ip"]
 
     pcap = rdpcap(experiment_result["experiment_host_pcap_path"])
