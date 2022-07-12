@@ -1,4 +1,7 @@
+import json
+import os
 import re
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import numpy as np
@@ -213,7 +216,37 @@ def process_pcap(experiment_result: "ExperimentResult"):
     )
 
 
-if __name__ == "__main__":
-    from mock_result import aloha
+def merge_all_experiments_into_csv(experiments_root: str):
+    experiments_all = set()
+    experiments_results = set()
 
-    process_pcap(aloha)
+    for path in Path(experiments_root).rglob("all.csv"):
+        experiments_all.add(os.path.dirname(path))
+
+    for path in Path(experiments_root).rglob("result.json"):
+        experiments_results.add(os.path.dirname(path))
+
+    valid_experiments = experiments_all.intersection(experiments_results)
+
+    all_results = pd.DataFrame()
+
+    for path in valid_experiments:
+        with open(os.path.join(path, "result.json"), "r") as f:
+            experiment_result: ExperimentResult = json.load(f)
+
+        result: pd.DataFrame = pd.read_csv(os.path.join(path, "all.csv"))  # type: ignore
+        result["mode"] = experiment_result["experiment"]["mode"]
+        result["id"] = experiment_result["experiment"]["id"]
+        result["server_protocol"] = experiment_result["experiment"]["server_protocol"]
+        result["server_type"] = experiment_result["experiment"]["server_type"]
+        result["video_name"] = experiment_result["experiment"]["mpd_path"].split("/")[3]
+
+        all_results = pd.concat([all_results, result], ignore_index=True)
+
+    all_results.to_csv(
+        os.path.join("/home/steckhelena", "all_results.csv"), index=False, header=True
+    )
+
+
+if __name__ == "__main__":
+    merge_all_experiments_into_csv("experiment_results")

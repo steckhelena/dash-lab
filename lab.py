@@ -415,35 +415,38 @@ if __name__ == "__main__":
 
     normalized_datasets = get_normalized_datasets(datasets)
 
+    experiments_per_combination = 10
+
     for dataset, mode in zip(normalized_datasets, dataset_modes):
         for server_type in server_types:
             for server_protocol in server_protocols:
                 for mpd_path in mpd_paths:
-                    print("Starting experiment for: ")
-                    print(f"Dataset: {dataset['name']}")
-                    print(f"Server type: {server_type}")
-                    print(f"Server protocol: {server_protocol}")
-                    print(f"Server mpd: {mpd_path}")
+                    for _ in range(experiments_per_combination):
+                        print("Starting experiment for: ")
+                        print(f"Dataset: {dataset['name']}")
+                        print(f"Server type: {server_type}")
+                        print(f"Server protocol: {server_protocol}")
+                        print(f"Server mpd: {mpd_path}")
 
-                    experiment: Experiment = {
-                        "mobility": dataset,
-                        "server_type": server_type,
-                        "server_protocol": server_protocol,
-                        "mode": mode,
-                        "id": int(time.time()),
-                        "adaptation_algorithm": "bba",
-                        "godash_config_path": "/home/raza/Downloads/goDASHbed/config/configure.json",
-                        "godash_bin_path": "/home/raza/Downloads/goDASH/godash/godash",
-                        "mpd_path": mpd_path,
-                    }  # type: ignore
+                        experiment: Experiment = {
+                            "mobility": dataset,
+                            "server_type": server_type,
+                            "server_protocol": server_protocol,
+                            "mode": mode,
+                            "id": int(time.time()),
+                            "adaptation_algorithm": "bba",
+                            "godash_config_path": "/home/raza/Downloads/goDASHbed/config/configure.json",
+                            "godash_bin_path": "/home/raza/Downloads/goDASH/godash/godash",
+                            "mpd_path": mpd_path,
+                        }  # type: ignore
 
-                    experiment_result = run_experiment(experiment)
+                        experiment_result = run_experiment(experiment)
 
-                    with open(
-                        get_experiment_result_file_name(experiment_result), "w"
-                    ) as f:
-                        result = json.dumps(experiment_result, cls=NpEncoder)
-                        f.write(result)
+                        with open(
+                            get_experiment_result_file_name(experiment_result), "w"
+                        ) as f:
+                            result = json.dumps(experiment_result, cls=NpEncoder)
+                            f.write(result)
 
-                    print("Processing pcap result")
-                    process_pcap(experiment_result)
+                        print("Processing pcap result")
+                        process_pcap(experiment_result)
