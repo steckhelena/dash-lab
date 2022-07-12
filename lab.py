@@ -31,6 +31,7 @@ class NpEncoder(json.JSONEncoder):
 
 class Experiment(TypedDict):
     id: int
+    repetition: int
     mode: str
     mobility: NormalizedDataset
     server_type: Union[Literal["asgi"], Literal["wsgi"]]
@@ -134,14 +135,25 @@ def print_experiment(experiment: Experiment):
     print(f"Protocol : {experiment['server_protocol']}\n")
 
 
+def get_experiment_root_folder() -> str:
+    experiment_folder = f"experiment_results"
+    absolute_experiment_folder = os.path.join(os.getcwd(), experiment_folder)
+
+    # create folder if not exists
+    pathlib.Path(absolute_experiment_folder).mkdir(parents=True, exist_ok=True)
+
+    return absolute_experiment_folder
+
+
 def get_experiment_folder_name(experiment: Experiment) -> str:
-    experiment_folder = (
-        f"experiment_results/{experiment['mode']}/"
+    experiment_folder = os.path.join(
+        get_experiment_root_folder(),
+        f"{experiment['mode']}/"
         + f"{experiment['mobility']['name']}/"
         + f"{experiment['mpd_path'].split('/')[3]}/"
         + f"{experiment['adaptation_algorithm']}/"
         + f"{experiment['server_protocol']}/{experiment['server_type']}/"
-        + f"id_{experiment['id']}"
+        + f"id_{experiment['id']}",
     )
     absolute_experiment_folder = os.path.join(os.getcwd(), experiment_folder)
 
@@ -163,9 +175,11 @@ def get_experiment_result_file_name(experiment: ExperimentResult) -> str:
     return os.path.join(experiment["experiment_root_path"], "result.json")
 
 
+def get_experiment_checkpoint_file_name() -> str:
+    return os.path.join(get_experiment_root_folder(), "checkpoint.txt")
+
+
 # server settings
-
-
 def server(server: Host, experiment: Experiment):
     load_experiment_config(experiment)
 
@@ -376,13 +390,22 @@ def run_experiment(experiment: Experiment) -> ExperimentResult:
     }
 
 
+def get_experiment_ordered_hash(experiment: Experiment):
+    return (
+        f"{experiment['mobility']['name']}"
+        + f"{experiment['mpd_path']}"
+        + f"{experiment['mode']}"
+        + f"{experiment['adaptation_algorithm']}"
+        + f"{experiment['server_protocol']}"
+        + f"{experiment[server_type]}"
+        + f"{experiment['repetition']}"
+    )
+
+
 if __name__ == "__main__":
     setLogLevel("info")
 
     mpd_paths = [
-        "4K_non_copyright_dataset/10_sec/x264/bbb/DASH_Files/full/bbb_enc_x264_dash.mpd",
-        "4K_non_copyright_dataset/10_sec/x264/sintel/DASH_Files/full/sintel_enc_x264_dash.mpd",
-        "4K_non_copyright_dataset/10_sec/x264/tearsofsteel/DASH_Files/full/tearsofsteel_enc_x264_dash.mpd",
         "4K_non_copyright_dataset/2_sec/x264/bbb/DASH_Files/full/bbb_enc_x264_dash.mpd",
         "4K_non_copyright_dataset/2_sec/x264/sintel/DASH_Files/full/sintel_enc_x264_dash.mpd",
         "4K_non_copyright_dataset/2_sec/x264/tearsofsteel/DASH_Files/full/tearsofsteel_enc_x264_dash.mpd",
@@ -395,6 +418,9 @@ if __name__ == "__main__":
         "4K_non_copyright_dataset/8_sec/x264/bbb/DASH_Files/full/bbb_enc_x264_dash.mpd",
         "4K_non_copyright_dataset/8_sec/x264/sintel/DASH_Files/full/sintel_enc_x264_dash.mpd",
         "4K_non_copyright_dataset/8_sec/x264/tearsofsteel/DASH_Files/full/tearsofsteel_enc_x264_dash.mpd",
+        "4K_non_copyright_dataset/10_sec/x264/bbb/DASH_Files/full/bbb_enc_x264_dash.mpd",
+        "4K_non_copyright_dataset/10_sec/x264/sintel/DASH_Files/full/sintel_enc_x264_dash.mpd",
+        "4K_non_copyright_dataset/10_sec/x264/tearsofsteel/DASH_Files/full/tearsofsteel_enc_x264_dash.mpd",
     ]
 
     datasets = [
@@ -410,36 +436,50 @@ if __name__ == "__main__":
 
     dataset_modes = ["4g", "4g", "4g", "5g", "5g", "5g", "5g", "5g"]
 
-    server_types = ["wsgi", "asgi"]
-    server_protocols = ["tcp", "quic"]
+    server_types = ["wsgi"]
+    server_protocols = ["tcp"]
     adaptation_algorithms = ["bba", "conventional", "elastic", "logistic"]
 
     normalized_datasets = get_normalized_datasets(datasets)
 
-    experiments_per_combination = 10
+    experiments_per_combination = 5
 
-    for dataset, mode in zip(normalized_datasets, dataset_modes):
-        for server_type in server_types:
-            for server_protocol in server_protocols:
-                for mpd_path in mpd_paths:
-                    for _ in range(experiments_per_combination):
-                        print("Starting experiment for: ")
-                        print(f"Dataset: {dataset['name']}")
-                        print(f"Server type: {server_type}")
-                        print(f"Server protocol: {server_protocol}")
-                        print(f"Server mpd: {mpd_path}")
+    done_experiment_hashes = set()
+    with open(get_experiment_checkpoint_file_name()) as f:
+        done_experiment_hashes = set(f.readlines())
 
+    for i in range(experiments_per_combination):
+        for mpd_path in mpd_paths:
+            for dataset, mode in zip(normalized_datasets, dataset_modes):
+                for server_type in server_types:
+                    for server_protocol in server_protocols:
                         experiment: Experiment = {
                             "mobility": dataset,
                             "server_type": server_type,
                             "server_protocol": server_protocol,
                             "mode": mode,
                             "id": int(time.time()),
+                            "repetition": i,
                             "adaptation_algorithm": "bba",
                             "godash_config_path": "/home/raza/Downloads/goDASHbed/config/configure.json",
                             "godash_bin_path": "/home/raza/Downloads/goDASH/godash/godash",
                             "mpd_path": mpd_path,
                         }  # type: ignore
+
+                        experiment_ordered_hash = get_experiment_ordered_hash(
+                            experiment
+                        )
+                        if experiment_ordered_hash in done_experiment_hashes:
+                            print(
+                                f"Skipping experiment with hash {experiment_ordered_hash} as it was already run"
+                            )
+                            continue
+
+                        print("Starting experiment for: ")
+                        print(f"Dataset: {dataset['name']}")
+                        print(f"Server type: {server_type}")
+                        print(f"Server protocol: {server_protocol}")
+                        print(f"Server mpd: {mpd_path}")
 
                         experiment_result = run_experiment(experiment)
 
@@ -451,3 +491,8 @@ if __name__ == "__main__":
 
                         print("Processing pcap result")
                         process_pcap(experiment_result)
+
+                        print("Saving to checkpoint")
+                        with open(get_experiment_checkpoint_file_name(), "a") as f:
+                            f.write(f"\n{experiment_ordered_hash}")
+                            done_experiment_hashes.add(experiment_ordered_hash)
