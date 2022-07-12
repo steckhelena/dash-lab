@@ -30,6 +30,8 @@ class Experiment(TypedDict):
 
 class ExperimentResult(TypedDict):
     experiment: Experiment
+    server_ip: str
+    experiment_root_path: str
     experiment_godash_result_path: str
     experiment_host_pcap_path: str
     had_to_restart_tc: bool
@@ -134,7 +136,7 @@ def get_experiment_folder_name(experiment: Experiment) -> str:
 
 
 def get_client_output_file_name(experiment: Experiment, client: Host) -> str:
-    return os.path.join(get_experiment_folder_name(experiment), str(client))
+    return os.path.join(get_experiment_folder_name(experiment), f"{client}.txt")
 
 
 def get_pcap_output_file_name(experiment: Experiment, client: Host) -> str:
@@ -290,7 +292,7 @@ def player(experiment: Experiment, client: Host):
     cmd = (
         f"{experiment['godash_bin_path']} -config "
         + f"{experiment['godash_config_path']} "
-        + f"> {get_client_output_file_name(experiment, client)}.txt"
+        + f"> {get_client_output_file_name(experiment, client)}"
     )
     print(cmd)
     print(client.cmd(cmd))
@@ -349,6 +351,8 @@ def run_experiment(experiment: Experiment) -> ExperimentResult:
 
     return {
         "experiment": experiment,
+        "server_ip": topology_response["server"].IP(),
+        "experiment_root_path": get_experiment_folder_name(experiment),
         "experiment_godash_result_path": get_client_output_file_name(
             experiment, topology_response["client"]
         ),
