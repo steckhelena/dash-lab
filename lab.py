@@ -151,6 +151,7 @@ def get_experiment_folder_name(experiment: Experiment) -> str:
         f"{experiment['mode']}/"
         + f"{experiment['mobility']['name']}/"
         + f"{experiment['mpd_path'].split('/')[3]}/"
+        + f"{experiment['mpd_path'].split('/')[1]}/"
         + f"{experiment['adaptation_algorithm']}/"
         + f"{experiment['server_protocol']}/{experiment['server_type']}/"
         + f"id_{experiment['id']}",
