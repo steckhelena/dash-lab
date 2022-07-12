@@ -2,6 +2,7 @@ import json
 import os
 import pathlib
 import subprocess
+import time
 from collections import OrderedDict
 from multiprocessing import Process
 from time import sleep
@@ -17,7 +18,7 @@ from normalize_datasets import NormalizedDataset, get_normalized_datasets
 
 class Experiment(TypedDict):
     id: int
-    mode: Literal["5g"]
+    mode: str
     mobility: NormalizedDataset
     server_type: Union[Literal["asgi"], Literal["wsgi"]]
     adaptation_algorithm: Union[
@@ -26,6 +27,7 @@ class Experiment(TypedDict):
     server_protocol: Union[Literal["quic"], Literal["tcp"]]
     godash_config_path: str
     godash_bin_path: str
+    mpd_path: str
 
 
 class ExperimentResult(TypedDict):
@@ -141,6 +143,10 @@ def get_client_output_file_name(experiment: Experiment, client: Host) -> str:
 
 def get_pcap_output_file_name(experiment: Experiment, client: Host) -> str:
     return os.path.join(get_experiment_folder_name(experiment), f"{client.intf()}.pcap")
+
+
+def get_experiment_result_file_name(experiment: ExperimentResult) -> str:
+    return os.path.join(experiment["experiment_root_path"], "result.json")
 
 
 # server settings
@@ -366,17 +372,95 @@ def run_experiment(experiment: Experiment) -> ExperimentResult:
 if __name__ == "__main__":
     setLogLevel("info")
 
-    normalized_datasets = get_normalized_datasets()
+    mpd_paths = [
+        "4K_non_copyright_dataset/10_sec/x264/bbb/DASH_Files/full/bbb_enc_x264_dash.mpd",
+        "4K_non_copyright_dataset/10_sec/x264/bbb/DASH_Files/full/dash_audio.mpd",
+        "4K_non_copyright_dataset/10_sec/x264/bbb/DASH_Files/full/dash_video_audio.mpd",
+        "4K_non_copyright_dataset/10_sec/x264/sintel/DASH_Files/full/dash_audio.mpd",
+        "4K_non_copyright_dataset/10_sec/x264/sintel/DASH_Files/full/dash_video_audio.mpd",
+        "4K_non_copyright_dataset/10_sec/x264/sintel/DASH_Files/full/sintel_enc_x264_dash.mpd",
+        "4K_non_copyright_dataset/10_sec/x264/tearsofsteel/DASH_Files/full/dash_audio.mpd",
+        "4K_non_copyright_dataset/10_sec/x264/tearsofsteel/DASH_Files/full/dash_video_audio.mpd",
+        "4K_non_copyright_dataset/10_sec/x264/tearsofsteel/DASH_Files/full/tearsofsteel_enc_x264_dash.mpd",
+        "4K_non_copyright_dataset/2_sec/x264/bbb/DASH_Files/full/bbb_enc_x264_dash.mpd",
+        "4K_non_copyright_dataset/2_sec/x264/bbb/DASH_Files/full/dash_audio.mpd",
+        "4K_non_copyright_dataset/2_sec/x264/bbb/DASH_Files/full/dash_video_audio.mpd",
+        "4K_non_copyright_dataset/2_sec/x264/sintel/DASH_Files/full/dash_audio.mpd",
+        "4K_non_copyright_dataset/2_sec/x264/sintel/DASH_Files/full/dash_video_audio.mpd",
+        "4K_non_copyright_dataset/2_sec/x264/sintel/DASH_Files/full/sintel_enc_x264_dash.mpd",
+        "4K_non_copyright_dataset/2_sec/x264/tearsofsteel/DASH_Files/full/dash_audio.mpd",
+        "4K_non_copyright_dataset/2_sec/x264/tearsofsteel/DASH_Files/full/dash_video_audio.mpd",
+        "4K_non_copyright_dataset/2_sec/x264/tearsofsteel/DASH_Files/full/tearsofsteel_enc_x264_dash.mpd",
+        "4K_non_copyright_dataset/4_sec/x264/bbb/DASH_Files/full/bbb_enc_x264_dash.mpd",
+        "4K_non_copyright_dataset/4_sec/x264/bbb/DASH_Files/full/dash_audio.mpd",
+        "4K_non_copyright_dataset/4_sec/x264/bbb/DASH_Files/full/dash_video_audio.mpd",
+        "4K_non_copyright_dataset/4_sec/x264/sintel/DASH_Files/full/dash_audio.mpd",
+        "4K_non_copyright_dataset/4_sec/x264/sintel/DASH_Files/full/dash_video_audio.mpd",
+        "4K_non_copyright_dataset/4_sec/x264/sintel/DASH_Files/full/sintel_enc_x264_dash.mpd",
+        "4K_non_copyright_dataset/4_sec/x264/tearsofsteel/DASH_Files/full/dash_audio.mpd",
+        "4K_non_copyright_dataset/4_sec/x264/tearsofsteel/DASH_Files/full/dash_video_audio.mpd",
+        "4K_non_copyright_dataset/4_sec/x264/tearsofsteel/DASH_Files/full/tearsofsteel_enc_x264_dash.mpd",
+        "4K_non_copyright_dataset/6_sec/x264/bbb/DASH_Files/full/bbb_enc_x264_dash.mpd",
+        "4K_non_copyright_dataset/6_sec/x264/bbb/DASH_Files/full/dash_audio.mpd",
+        "4K_non_copyright_dataset/6_sec/x264/bbb/DASH_Files/full/dash_video_audio.mpd",
+        "4K_non_copyright_dataset/6_sec/x264/sintel/DASH_Files/full/dash_audio.mpd",
+        "4K_non_copyright_dataset/6_sec/x264/sintel/DASH_Files/full/dash_video_audio.mpd",
+        "4K_non_copyright_dataset/6_sec/x264/sintel/DASH_Files/full/sintel_enc_x264_dash.mpd",
+        "4K_non_copyright_dataset/6_sec/x264/tearsofsteel/DASH_Files/full/dash_audio.mpd",
+        "4K_non_copyright_dataset/6_sec/x264/tearsofsteel/DASH_Files/full/dash_video_audio.mpd",
+        "4K_non_copyright_dataset/6_sec/x264/tearsofsteel/DASH_Files/full/tearsofsteel_enc_x264_dash.mpd",
+        "4K_non_copyright_dataset/8_sec/x264/bbb/DASH_Files/full/bbb_enc_x264_dash.mpd",
+        "4K_non_copyright_dataset/8_sec/x264/bbb/DASH_Files/full/dash_audio.mpd",
+        "4K_non_copyright_dataset/8_sec/x264/bbb/DASH_Files/full/dash_video_audio.mpd",
+        "4K_non_copyright_dataset/8_sec/x264/sintel/DASH_Files/full/dash_audio.mpd",
+        "4K_non_copyright_dataset/8_sec/x264/sintel/DASH_Files/full/dash_video_audio.mpd",
+        "4K_non_copyright_dataset/8_sec/x264/sintel/DASH_Files/full/sintel_enc_x264_dash.mpd",
+        "4K_non_copyright_dataset/8_sec/x264/tearsofsteel/DASH_Files/full/dash_audio.mpd",
+        "4K_non_copyright_dataset/8_sec/x264/tearsofsteel/DASH_Files/full/dash_video_audio.mpd",
+        "4K_non_copyright_dataset/8_sec/x264/tearsofsteel/DASH_Files/full/tearsofsteel_enc_x264_dash.mpd",
+    ]
 
-    experiment: Experiment = {
-        "mobility": normalized_datasets[0],
-        "server_type": "wsgi",
-        "server_protocol": "tcp",
-        "mode": "5g",
-        "id": 2,
-        "adaptation_algorithm": "bba",
-        "godash_config_path": "/home/raza/Downloads/goDASHbed/config/configure.json",
-        "godash_bin_path": "/home/raza/Downloads/goDASH/godash/godash",
-    }
+    datasets = [
+        "RazaDatasets/4g/B_2017.12.17_14.16.19.csv",
+        "RazaDatasets/4g/B_2018.01.27_13.58.28.csv",
+        "RazaDatasets/4g/B_2018.02.12_16.14.01.csv",
+        "RazaDatasets/5g/Static/B_2019.12.16_13.40.04.csv",
+        "RazaDatasets/5g/Static/B_2020.01.16_10.43.34.csv",
+        "RazaDatasets/5g/Static/B_2020.02.13_13.57.29.csv",
+        "RazaDatasets/5g/Static/B_2020.02.14_13.21.26.csv",
+        "RazaDatasets/5g/Static/B_2020.02.27_18.39.27.csv",
+    ]
 
-    print(run_experiment(experiment))
+    dataset_modes = ["4g", "4g", "4g", "5g", "5g", "5g", "5g", "5g"]
+
+    server_types = ["wsgi", "asgi"]
+    server_protocols = ["tcp", "quic"]
+    adaptation_algorithms = ["bba", "conventional", "elastic", "logistic"]
+
+    normalized_datasets = get_normalized_datasets(datasets)
+
+    for dataset, mode in zip(normalized_datasets, dataset_modes):
+        for server_type in server_types:
+            for server_protocol in server_protocols:
+                for mpd_path in mpd_paths:
+                    print("Starting experiment for: ")
+                    print(f"Dataset: {dataset}")
+                    print(f"Server type: {server_type}")
+                    print(f"Server protocol: {server_protocol}")
+                    print(f"Server mpd: {mpd_path}")
+
+                    experiment: Experiment = {
+                        "mobility": dataset,
+                        "server_type": server_type,
+                        "server_protocol": server_protocol,
+                        "mode": mode,
+                        "id": int(time.time()),
+                        "adaptation_algorithm": "bba",
+                        "godash_config_path": "/home/raza/Downloads/goDASHbed/config/configure.json",
+                        "godash_bin_path": "/home/raza/Downloads/goDASH/godash/godash",
+                    }  # type: ignore
+
+                    experiment_result = run_experiment(experiment)
+
+                    with open(get_experiment_result_file_name(experiment_result)) as f:
+                        json.dump(experiment_result, f)

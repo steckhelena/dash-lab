@@ -5,8 +5,6 @@ import numpy as np
 import pandas as pd
 from pandas.core.frame import DataFrame
 
-from datasets5G import datasets5G
-
 
 class Limits(TypedDict):
     upload_kbps: float
@@ -18,9 +16,6 @@ class NormalizedDataset(TypedDict):
     name: str
     data: List[Limits]
     total_duration: int
-    platform: str
-    mobility: str
-    case: str
     dataset: str
 
 
@@ -28,10 +23,10 @@ class NormalizedDataset(TypedDict):
 pd.options.mode.chained_assignment = None
 
 
-def get_normalized_datasets() -> List[NormalizedDataset]:
+def get_normalized_datasets(datasets) -> List[NormalizedDataset]:
     normalized_datasets = []
 
-    for filename in datasets5G:
+    for filename in datasets:
         # Normalize dataset using pandas
         csv_data: DataFrame = pd.read_csv(filename)  # type: ignore
 
@@ -86,10 +81,7 @@ def get_normalized_datasets() -> List[NormalizedDataset]:
         # Normalize name removing first path
         parts = pathlib.Path(filename).parts
         normalized_name = "-".join(parts[1:]).strip(".csv")
-        platform = parts[1]
-        mobility = parts[2]
-        case = parts[3] if len(parts) > 4 else parts[1]
-        dataset = parts[4] if len(parts) > 4 else parts[3]
+        dataset = parts[-1]
 
         # append normalized results
         normalized_datasets.append(
@@ -97,9 +89,6 @@ def get_normalized_datasets() -> List[NormalizedDataset]:
                 "name": normalized_name,
                 "data": filtered_data.to_dict("records"),
                 "total_duration": total_duration,
-                "platform": platform,
-                "mobility": mobility,
-                "case": case,
                 "dataset": dataset,
             }
         )

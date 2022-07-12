@@ -138,7 +138,6 @@ def process_pcap(experiment_result: ExperimentResult):
                 std_less = 0
 
             if dc_gt100_05 > 2:
-                print(dc_gt100_05)
                 tpTime_05_GT100 = d_packets_gt_100_time[-1] - d_packets_gt_100_time[0]
                 AvgTime_List_GT100 = [
                     d_packets_gt_100_time[i + 1] - d_packets_gt_100_time[i]
@@ -205,8 +204,6 @@ def process_pcap(experiment_result: ExperimentResult):
                 index=False,
                 header=True,
             )
-        else:
-            print("Skipped: ", end)
 
     merged_columns = pd.merge(godash_result, df, on="Arr_time", how="left")
     merged_columns.to_csv(
