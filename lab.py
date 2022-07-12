@@ -443,7 +443,6 @@ if __name__ == "__main__":
                         get_experiment_result_file_name(experiment_result), "w"
                     ) as f:
                         result = json.dumps(experiment_result, cls=NpEncoder)
-                        print(result)
                         f.write(result)
 
                     print("Processing pcap result")
