@@ -5,3 +5,7 @@ logs
 __pycache__/
 experiment_results
 output/
+godash_defaults/hypercorn_goDASHbed_quic.py
+godash_defaults/hypercorn_goDASHbed.py
+godash_defaults/CaddyFilev2QUIC
+godash_defaults/CaddyFilev2TCP

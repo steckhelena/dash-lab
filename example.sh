@@ -25,5 +25,5 @@ python3 lab.py \
     -d "RazaDatasets/5g/Static/B_2020.02.14_13.21.26.csv" -t5g\
     -d "RazaDatasets/5g/Static/B_2020.02.27_18.39.27.csv" -t5g\
     --godash-bin "/home/raza/Downloads/goDASH/godash/godash" \
-    --godash-config-template "/home/raza/Downloads/goDASHbed/config/configure.json" \
+    --dash-files-root "/home/raza/videofiles" \
     --types wsgi

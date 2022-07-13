@@ -17,6 +17,7 @@ from mininet.net import Mininet
 from mininet.node import Host, Switch
 
 from datasets5G import datasets5G
+from fill_templates import fill_template
 from normalize_datasets import NormalizedDataset, get_normalized_datasets
 from process_results import cleanup_pcap, process_pcap
 
@@ -192,10 +193,14 @@ def get_experiment_checkpoint_file_name(experiment_root_folder: str) -> str:
     return os.path.join(experiment_root_folder, "checkpoint.txt")
 
 
+def get_defaults_path() -> pathlib.Path:
+    return pathlib.Path(__file__).parent.absolute() / "godash_defaults"
+
+
 # server settings
 def server(server: Host, experiment: Experiment):
     load_experiment_config(experiment)
-    parent_dir = pathlib.Path(__file__).parent.absolute() / "godash_defaults"
+    parent_dir = get_defaults_path()
 
     print(
         f"sudo systemctl stop apache2.service && caddy start --config {parent_dir / 'CaddyFilev2QUIC'} --adapter caddyfile"
@@ -484,14 +489,14 @@ def parse_command_line_options():
 
     parser.add_argument(
         "--godash-bin",
-        help="Path to goDASH executable.",
+        help="<Required> Path to goDASH executable.",
         type=str,
         required=True,
     )
 
     parser.add_argument(
         "--godash-config-template",
-        default=os.path.join(os.path.dirname(__file__), "configure.json"),
+        default=(get_defaults_path() / "configure.json").as_posix(),
         help="""Path to goDASH configuration template. This will be the base for
         the goDASH configuration, the fields 'quic', 'url' 'serveraddr' and
         'adapt' will be overwritten for the running experiment. The other fields
@@ -510,10 +515,18 @@ def parse_command_line_options():
     )
 
     parser.add_argument(
+        "--dash-files-root",
+        default="/var/www/html",
+        help="""This is the root to the DASH files to be served by the file
+        server, i.e. the path where the DASH segments are stored, the mpd paths
+        are relative to this.""",
+    )
+
+    parser.add_argument(
         "-d",
         "--dataset",
         action="append",
-        help="""<Required> System path, relative or absolute, to the dataset
+        help="""System path, relative or absolute, to the dataset
         which will be used to simulate the network conditions, can be added
         multiple times, requires one -t/--dataset-type set for each. E.g.:
         `-d a/b.csv -t4g -d b/c.csv -t5g`. If not provided defaults to the
@@ -524,7 +537,7 @@ def parse_command_line_options():
         "-t",
         "--dataset-type",
         action="append",
-        help="""<Required> Type of the dataset. E.g.: 5g, 4g, 3g.""",
+        help="""Type of the dataset. E.g.: 5g, 4g, 3g.""",
     )
 
     parser.add_argument(
@@ -633,6 +646,32 @@ if __name__ == "__main__":
     ):
         with open(get_experiment_checkpoint_file_name(experiment_root)) as f:
             done_experiment_hashes = set(f.read().splitlines())
+
+    # fill server templates before starting out:
+    fill_template(
+        (get_defaults_path() / "CaddyFilev2QUIC.jinja").as_posix(),
+        (get_defaults_path() / "CaddyFilev2QUIC").as_posix(),
+        parsed_commands.dash_files_root,
+        get_defaults_path().as_posix().rstrip("/"),
+    )
+    fill_template(
+        (get_defaults_path() / "CaddyFilev2TCP.jinja").as_posix(),
+        (get_defaults_path() / "CaddyFilev2TCP").as_posix(),
+        parsed_commands.dash_files_root,
+        get_defaults_path().as_posix().rstrip("/"),
+    )
+    fill_template(
+        (get_defaults_path() / "hypercorn_goDASHbed.py.jinja").as_posix(),
+        (get_defaults_path() / "hypercorn_goDASHbed.py").as_posix(),
+        parsed_commands.dash_files_root,
+        get_defaults_path().as_posix().rstrip("/"),
+    )
+    fill_template(
+        (get_defaults_path() / "hypercorn_goDASHbed_quic.py.jinja").as_posix(),
+        (get_defaults_path() / "hypercorn_goDASHbed_quic.py").as_posix(),
+        parsed_commands.dash_files_root,
+        get_defaults_path().as_posix().rstrip("/"),
+    )
 
     for mpd_path in mpd_paths:
         for dataset, mode in zip(normalized_datasets, dataset_modes):
