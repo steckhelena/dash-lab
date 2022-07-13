@@ -450,12 +450,27 @@ def parse_command_line_options():
         then we can apply traffic shaping on that traffic by using tc qdiscs
         when we otherwise would not be able to.
 
+        This command line interface is based on a previous work `DASH QoE
+        Performance Evaluation Framework with 5G Datasets`[5] and builds upon
+        it.
+
         [1] D. Raca, D. Leahy, C.J. Sreenan and J.J. Quinlan. Beyond Throughput,
         The Next Generation: A 5G Dataset with Channel and Context Metrics. ACM
         Multimedia Systems Conference (MMSys), Istanbul, Turkey. June 8-11, 2020
-        [2] D. Raca, M. Manifacier, and J.J. Quinlan. goDASH - GO accelerated HAS framework for rapid prototyping. 12th International Conference on Quality of Multimedia Experience (QoMEX), Athlone, Ireland. 26th to 28th May, 2020 CORA
-        [3] John O’Sullivan, D. Raca, and Jason J. Quinlan. Demo Paper: godash 2.0 - The Next Evolution of HAS Evaluation. 21st IEEE International Symposium On A World Of Wireless, Mobile And Multimedia Networks (IEEE WoWMoM 2020), Cork, Ireland. August 31 to September 03, 2020 CORA
+        [2] D. Raca, M. Manifacier, and J.J. Quinlan. goDASH - GO accelerated
+        HAS framework for rapid prototyping. 12th International Conference on
+        Quality of Multimedia Experience (QoMEX), Athlone, Ireland. 26th to 28th
+        May, 2020 CORA
+        [3] John O’Sullivan, D. Raca, and Jason J. Quinlan. Demo Paper: godash
+        2.0 - The Next Evolution of HAS Evaluation. 21st IEEE International
+        Symposium On A World Of Wireless, Mobile And Multimedia Networks (IEEE
+        WoWMoM 2020), Cork, Ireland. August 31 to September 03, 2020 CORA
         [4] https://github.com/mininet/mininet
+        [5] R. Ul Mustafa, M. T. Islam, C. Rothenberg, S. Ferlin, D. Raca and J.
+        J. Quinlan, "DASH QoE Performance Evaluation Framework with 5G
+        Datasets," 2020 16th International Conference on Network and Service
+        Management (CNSM), Izmir, Turkey, 2020, pp. 1-6, doi:
+        10.23919/CNSM50824.2020.9269111.
         """,
         formatter_class=Formatter,
     )
