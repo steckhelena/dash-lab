@@ -15,6 +15,7 @@ from mininet.log import info, setLogLevel
 from mininet.net import Mininet
 from mininet.node import Host, Switch
 
+from datasets5G import datasets5G
 from normalize_datasets import NormalizedDataset, get_normalized_datasets
 from process_results import cleanup_pcap, process_pcap
 
@@ -510,8 +511,9 @@ def parse_command_line_options():
         help="""<Required> System path, relative or absolute, to the dataset
         which will be used to simulate the network conditions, can be added
         multiple times, requires one -t/--dataset-type set for each. E.g.:
-        `-d a/b.csv -t4g -d b/c.csv -t5g`""",
-        required=True,
+        `-d a/b.csv -t4g -d b/c.csv -t5g`. If not provided defaults to the
+        datasets from [1].""",
+        default=datasets5G,
     )
 
     parser.add_argument(
@@ -519,7 +521,7 @@ def parse_command_line_options():
         "--dataset-type",
         action="append",
         help="""<Required> Type of the dataset. E.g.: 5g, 4g, 3g.""",
-        required=True,
+        default=["5g"] * len(datasets5G),
     )
 
     parser.add_argument(
@@ -586,7 +588,13 @@ def parse_command_line_options():
         default=False,
     )
 
-    return parser.parse_args()
+    result = parser.parse_args()
+    if len(result.dataset) != len(result.dataset_type):
+        raise Exception(
+            "There needs to be the same number of dataset entries as there are dataset types!"
+        )
+
+    return result
 
 
 if __name__ == "__main__":
