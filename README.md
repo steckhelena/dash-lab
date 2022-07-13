@@ -44,7 +44,7 @@ traffic control on the download packets on the host node.
 
 ## Usage
 
-```bash
+```
 usage: lab.py [-h] --godash-bin GODASH_BIN
               [--godash-config-template GODASH_CONFIG_TEMPLATE] -m MPD_PATH
               [-d DATASET] [-t DATASET_TYPE] [-r REPETITIONS]
