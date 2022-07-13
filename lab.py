@@ -3,6 +3,7 @@ import json
 import os
 import pathlib
 import subprocess
+import tempfile
 import time
 from collections import OrderedDict
 from multiprocessing import Process, Value
@@ -128,7 +129,7 @@ def load_experiment_config(experiment: Experiment):
 
     test_dict["serveraddr"] = "off"
 
-    json.dump(test_dict, open(experiment["godash_config_path"], "w"))
+    json.dump(test_dict, open(get_godash_config_temp_path(), "w"))
 
 
 def print_experiment(experiment: Experiment):
@@ -142,13 +143,13 @@ def print_experiment(experiment: Experiment):
     print("=" * 10)
 
 
+def get_godash_config_temp_path() -> str:
+    return (pathlib.Path(tempfile.gettempdir()) / "dash-lab-configure.json").as_posix()
+
+
 def get_experiment_root_folder(experiment: Experiment) -> str:
     experiment_folder = experiment["experiment_root_path"]
-    absolute_experiment_folder = (
-        experiment_folder
-        if os.path.isabs(experiment_folder)
-        else os.path.join(os.getcwd(), experiment_folder)
-    )
+    absolute_experiment_folder = os.path.abspath(experiment_folder)
 
     # create folder if not exists
     pathlib.Path(absolute_experiment_folder).mkdir(parents=True, exist_ok=True)
@@ -167,7 +168,7 @@ def get_experiment_folder_name(experiment: Experiment) -> str:
         + f"{experiment['server_protocol']}/{experiment['server_type']}/"
         + f"id_{experiment['id']}",
     )
-    absolute_experiment_folder = os.path.join(os.getcwd(), experiment_folder)
+    absolute_experiment_folder = os.path.abspath(experiment_folder)
 
     # create folder if not exists
     pathlib.Path(absolute_experiment_folder).mkdir(parents=True, exist_ok=True)
@@ -194,16 +195,20 @@ def get_experiment_checkpoint_file_name(experiment_root_folder: str) -> str:
 # server settings
 def server(server: Host, experiment: Experiment):
     load_experiment_config(experiment)
+    parent_dir = pathlib.Path(__file__).parent.absolute() / "godash_defaults"
 
+    print(
+        f"sudo systemctl stop apache2.service && caddy start --config {parent_dir / 'CaddyFilev2QUIC'} --adapter caddyfile"
+    )
     if experiment["server_type"] == "wsgi":
         if experiment["server_protocol"] == "quic":
             server.cmd(
-                "cd /home/raza/Downloads/goDASHbed && sudo systemctl stop apache2.service && caddy start --config ./caddy-config/TestbedTCP/CaddyFilev2QUIC --adapter caddyfile"
+                f"sudo systemctl stop apache2.service && caddy start --config {parent_dir / 'CaddyFilev2QUIC'} --adapter caddyfile"
             )
             print("......WSGI(caddy) server and quic protocol.....")
         else:
             server.cmd(
-                "cd /home/raza/Downloads/goDASHbed && sudo systemctl stop apache2.service && caddy start --config ./caddy-config/TestbedTCP/CaddyFilev2TCP --adapter caddyfile"
+                f"sudo systemctl stop apache2.service && caddy start --config {parent_dir / 'CaddyFilev2TCP'} --adapter caddyfile"
             )
             print("......WSGI(caddy) server  and tcp protocol.....")
 
@@ -211,14 +216,14 @@ def server(server: Host, experiment: Experiment):
         if experiment["server_protocol"] == "quic":
             print(
                 server.cmd(
-                    "cd /home/raza/Downloads/goDASHbed && sudo systemctl stop apache2.service &&  hypercorn hypercorn_goDASHbed_quic:app &"
+                    f"sudo systemctl stop apache2.service &&  hypercorn {parent_dir / 'hypercorn_goDASHbed_quic'}:app &"
                 )
             )
             print("......ASGI(hypercorn) server and quic protocol.....")
         else:
             print(
                 server.cmd(
-                    "cd /home/raza/Downloads/goDASHbed && sudo systemctl stop apache2.service && hypercorn hypercorn_goDASHbed:app &"
+                    f"sudo systemctl stop apache2.service && hypercorn {parent_dir / 'hypercorn_goDASHbed'}:app &"
                 )
             )
             print("......ASGI(hypercorn) server and tcp protocol.....")
@@ -330,7 +335,7 @@ def tc(experiment: Experiment, client: Host, is_finished):
 def player(experiment: Experiment, client: Host, is_finished):
     cmd = (
         f"{experiment['godash_bin_path']} -config "
-        + f"{experiment['godash_config_path']} "
+        + f"{get_godash_config_temp_path()} "
         + f"> {get_client_output_file_name(experiment, client)}"
     )
     print(cmd)
@@ -486,7 +491,7 @@ def parse_command_line_options():
 
     parser.add_argument(
         "--godash-config-template",
-        default="/home/raza/Downloads/goDASHbed/config/configure.json",
+        default=os.path.join(os.path.dirname(__file__), "configure.json"),
         help="""Path to goDASH configuration template. This will be the base for
         the goDASH configuration, the fields 'quic', 'url' 'serveraddr' and
         'adapt' will be overwritten for the running experiment. The other fields
@@ -513,7 +518,6 @@ def parse_command_line_options():
         multiple times, requires one -t/--dataset-type set for each. E.g.:
         `-d a/b.csv -t4g -d b/c.csv -t5g`. If not provided defaults to the
         datasets from [1].""",
-        default=datasets5G,
     )
 
     parser.add_argument(
@@ -521,7 +525,6 @@ def parse_command_line_options():
         "--dataset-type",
         action="append",
         help="""<Required> Type of the dataset. E.g.: 5g, 4g, 3g.""",
-        default=["5g"] * len(datasets5G),
     )
 
     parser.add_argument(
@@ -589,6 +592,10 @@ def parse_command_line_options():
     )
 
     result = parser.parse_args()
+    if not result.dataset and not result.dataset_type:
+        result.dataset = datasets5G
+        result.dataset_type = ["5g"] * len(datasets5G)
+
     if len(result.dataset) != len(result.dataset_type):
         raise Exception(
             "There needs to be the same number of dataset entries as there are dataset types!"
