@@ -3,3 +3,4 @@ Band_data
 id_*
 logs
 __pycache__/
+experiment_results

@@ -429,9 +429,10 @@ def parse_command_line_options():
         Context Metrics`[1] work.
 
         This CLI will create, for each experiment run, one host node for
-        receiving the streamed content using goDASH, one server node for
-        streaming DASH files using goDASHbed and one switch connecting both of
-        them. To do this it uses mininet[2], the network topology is as follows:
+        receiving the streamed content using goDASH[2][3], one server node for
+        streaming DASH files using goDASHbed[2][3] and one switch connecting
+        both of them. To do this it uses mininet[4], the network topology is as
+        follows:
         ┌────────┐     ┌────────┐    ┌──────┐
         │Client 1├─────┤Swith s1├────┤Server│
         └────────┘     └────────┘    └──────┘
@@ -440,6 +441,21 @@ def parse_command_line_options():
         traffic control for the Linux Kernel. To do this we use traffic shaping
         in order to limit the bandwidth available for both download and upload
         traffic. This is done on the client node interface.
+
+        For the traffic shaping to work properly on the download bandwidth the
+        ifb kernel module needs to be loaded. To check if it is use:
+        `lsmod | grep ifb`, if this has no output then it isn't, to load it run
+        `sudo modprobe ifb`. This module is used as pseudo network interface as
+        a concentrator for all traffic incoming on the client network interface,
+        then we can apply traffic shaping on that traffic by using tc qdiscs
+        when we otherwise would not be able to.
+
+        [1] D. Raca, D. Leahy, C.J. Sreenan and J.J. Quinlan. Beyond Throughput,
+        The Next Generation: A 5G Dataset with Channel and Context Metrics. ACM
+        Multimedia Systems Conference (MMSys), Istanbul, Turkey. June 8-11, 2020
+        [2] D. Raca, M. Manifacier, and J.J. Quinlan. goDASH - GO accelerated HAS framework for rapid prototyping. 12th International Conference on Quality of Multimedia Experience (QoMEX), Athlone, Ireland. 26th to 28th May, 2020 CORA
+        [3] John O’Sullivan, D. Raca, and Jason J. Quinlan. Demo Paper: godash 2.0 - The Next Evolution of HAS Evaluation. 21st IEEE International Symposium On A World Of Wireless, Mobile And Multimedia Networks (IEEE WoWMoM 2020), Cork, Ireland. August 31 to September 03, 2020 CORA
+        [4] https://github.com/mininet/mininet
         """,
         formatter_class=Formatter,
     )
