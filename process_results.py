@@ -248,5 +248,9 @@ def merge_all_experiments_into_csv(experiments_root: str):
     )
 
 
+def cleanup_pcap(experiment_result: "ExperimentResult"):
+    os.remove(experiment_result["experiment_host_pcap_path"])
+
+
 if __name__ == "__main__":
     merge_all_experiments_into_csv("experiment_results")

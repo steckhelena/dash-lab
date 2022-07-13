@@ -1,3 +1,4 @@
+import argparse
 import json
 import os
 import pathlib
@@ -15,7 +16,13 @@ from mininet.net import Mininet
 from mininet.node import Host, Switch
 
 from normalize_datasets import NormalizedDataset, get_normalized_datasets
-from process_results import process_pcap
+from process_results import cleanup_pcap, process_pcap
+
+
+class Formatter(
+    argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter
+):
+    pass
 
 
 class NpEncoder(json.JSONEncoder):
@@ -41,13 +48,13 @@ class Experiment(TypedDict):
     server_protocol: Union[Literal["quic"], Literal["tcp"]]
     godash_config_path: str
     godash_bin_path: str
+    experiment_root_path: str
     mpd_path: str
 
 
 class ExperimentResult(TypedDict):
     experiment: Experiment
     server_ip: str
-    experiment_root_path: str
     experiment_godash_result_path: str
     experiment_host_pcap_path: str
     had_to_restart_tc: bool
@@ -135,9 +142,13 @@ def print_experiment(experiment: Experiment):
     print(f"Protocol : {experiment['server_protocol']}\n")
 
 
-def get_experiment_root_folder() -> str:
-    experiment_folder = f"experiment_results"
-    absolute_experiment_folder = os.path.join(os.getcwd(), experiment_folder)
+def get_experiment_root_folder(experiment: Experiment) -> str:
+    experiment_folder = experiment["experiment_root_path"]
+    absolute_experiment_folder = (
+        experiment_folder
+        if os.path.isabs(experiment_folder)
+        else os.path.join(os.getcwd(), experiment_folder)
+    )
 
     # create folder if not exists
     pathlib.Path(absolute_experiment_folder).mkdir(parents=True, exist_ok=True)
@@ -147,7 +158,7 @@ def get_experiment_root_folder() -> str:
 
 def get_experiment_folder_name(experiment: Experiment) -> str:
     experiment_folder = os.path.join(
-        get_experiment_root_folder(),
+        get_experiment_root_folder(experiment),
         f"{experiment['mode']}/"
         + f"{experiment['mobility']['name']}/"
         + f"{experiment['mpd_path'].split('/')[3]}/"
@@ -173,11 +184,11 @@ def get_pcap_output_file_name(experiment: Experiment, client: Host) -> str:
 
 
 def get_experiment_result_file_name(experiment: ExperimentResult) -> str:
-    return os.path.join(experiment["experiment_root_path"], "result.json")
+    return os.path.join(experiment["experiment"]["experiment_root_path"], "result.json")
 
 
-def get_experiment_checkpoint_file_name() -> str:
-    return os.path.join(get_experiment_root_folder(), "checkpoint.txt")
+def get_experiment_checkpoint_file_name(experiment_root_folder: str) -> str:
+    return os.path.join(experiment_root_folder, "checkpoint.txt")
 
 
 # server settings
@@ -380,7 +391,6 @@ def run_experiment(experiment: Experiment) -> ExperimentResult:
     return {
         "experiment": experiment,
         "server_ip": topology_response["server"].IP(),
-        "experiment_root_path": get_experiment_folder_name(experiment),
         "experiment_godash_result_path": get_client_output_file_name(
             experiment, topology_response["client"]
         ),
@@ -403,98 +413,224 @@ def get_experiment_ordered_hash(experiment: Experiment):
     )
 
 
+def parse_command_line_options():
+    parser = argparse.ArgumentParser(
+        description="""
+        This is a command line utility to run a simulated environment for DASH
+        video streaming tests. It uses goDASHbed for running the server and
+        godash for running DASH clients to consume the content and generate QoE
+        features for the video result.
+
+        This environment supports simulating network conditions based on network
+        traces.
+
+        The traces should be in a format similar to those provided by the
+        `Beyond Throughput, The Next Generation: a 5G Dataset with Channel and
+        Context Metrics`[1] work.
+
+        This CLI will create, for each experiment run, one host node for
+        receiving the streamed content using goDASH, one server node for
+        streaming DASH files using goDASHbed and one switch connecting both of
+        them. To do this it uses mininet[2], the network topology is as follows:
+        ┌────────┐     ┌────────┐    ┌──────┐
+        │Client 1├─────┤Swith s1├────┤Server│
+        └────────┘     └────────┘    └──────┘
+
+        The network simulation is done using the tc linux tool which offers
+        traffic control for the Linux Kernel. To do this we use traffic shaping
+        in order to limit the bandwidth available for both download and upload
+        traffic. This is done on the client node interface.
+        """,
+        formatter_class=Formatter,
+    )
+
+    parser.add_argument(
+        "--godash-bin",
+        help="Path to goDASH executable.",
+        type=str,
+        required=True,
+    )
+
+    parser.add_argument(
+        "--godash-config-template",
+        default="/home/raza/Downloads/goDASHbed/config/configure.json",
+        help="""Path to goDASH configuration template. This will be the base for
+        the goDASH configuration, the fields 'quic', 'url' 'serveraddr' and
+        'adapt' will be overwritten for the running experiment. The other fields
+        will stay the same.""",
+        type=str,
+    )
+
+    parser.add_argument(
+        "-m",
+        "--mpd-path",
+        action="append",
+        help="""<Required> Path from the server root to the mpd files with
+        information on the DASH videos to be streamed. Can be added multiple
+        times. E.g.: `-m a/b.mpd -m b/c.mpd`""",
+        required=True,
+    )
+
+    parser.add_argument(
+        "-d",
+        "--dataset",
+        action="append",
+        help="""<Required> System path, relative or absolute, to the dataset
+        which will be used to simulate the network conditions, can be added
+        multiple times, requires one -t/--dataset-type set for each. E.g.:
+        `-d a/b.csv -t4g -d b/c.csv -t5g`""",
+        required=True,
+    )
+
+    parser.add_argument(
+        "-t",
+        "--dataset-type",
+        action="append",
+        help="""<Required> Type of the dataset. E.g.: 5g, 4g, 3g.""",
+        required=True,
+    )
+
+    parser.add_argument(
+        "-r",
+        "--repetitions",
+        type=int,
+        default=5,
+        help="""Number of repetitions for each experiment combination.""",
+    )
+
+    parser.add_argument(
+        "--algos",
+        nargs="+",
+        default=["bba", "conventional", "elastic", "logistic"],
+        choices=["bba", "conventional", "elastic", "logistic"],
+        help="""What algorithms to run the experiments with.""",
+    )
+
+    parser.add_argument(
+        "--protocols",
+        nargs="+",
+        default=["tcp", "quic"],
+        choices=["tcp", "quic"],
+        help="""What protocols to run the experiments with.""",
+    )
+
+    parser.add_argument(
+        "--types",
+        nargs="+",
+        default=["wsgi", "asgi"],
+        choices=["wsgi", "asgi"],
+        help="""What kind of server gateway to run the experiments with.""",
+    )
+
+    parser.add_argument(
+        "--experiment-root",
+        type=str,
+        default="experiment_results",
+        help="""The experiment output folder path, can be relative or
+        absolute.""",
+    )
+
+    parser.add_argument(
+        "-c",
+        "--use-checkpoint",
+        action="store_true",
+        help="""Use a checkpoint file for easily resuming experiments execution
+        if stopped. Defaults to using a checkpoint.""",
+    )
+    parser.add_argument(
+        "--no-use-checkpoint",
+        action="store_false",
+        dest="use_checkpoint",
+        help="""Do not use a checkpoint file for easily resuming experiments
+        execution if stopped. Defaults to using a checkpoint.""",
+    )
+    parser.set_defaults(use_checkpoint=True)
+
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
+    parsed_commands = parse_command_line_options()
+
+    mpd_paths = parsed_commands.mpd_path
+    datasets = parsed_commands.dataset
+    dataset_modes = parsed_commands.dataset_type
+    server_types = parsed_commands.types
+    server_protocols = parsed_commands.protocols
+    experiments_per_combination = parsed_commands.repetitions
+    algos = parsed_commands.algos
+    use_checkpoint = parsed_commands.use_checkpoint
+    experiment_root = parsed_commands.experiment_root
+    godash_bin_path = parsed_commands.godash_bin
+    godash_config_path = parsed_commands.godash_config_template
+
     setLogLevel("info")
-
-    mpd_paths = [
-        "4K_non_copyright_dataset/2_sec/x264/bbb/DASH_Files/full/bbb_enc_x264_dash.mpd",
-        "4K_non_copyright_dataset/2_sec/x264/sintel/DASH_Files/full/sintel_enc_x264_dash.mpd",
-        "4K_non_copyright_dataset/2_sec/x264/tearsofsteel/DASH_Files/full/tearsofsteel_enc_x264_dash.mpd",
-        "4K_non_copyright_dataset/4_sec/x264/bbb/DASH_Files/full/bbb_enc_x264_dash.mpd",
-        "4K_non_copyright_dataset/4_sec/x264/sintel/DASH_Files/full/sintel_enc_x264_dash.mpd",
-        "4K_non_copyright_dataset/4_sec/x264/tearsofsteel/DASH_Files/full/tearsofsteel_enc_x264_dash.mpd",
-        "4K_non_copyright_dataset/6_sec/x264/bbb/DASH_Files/full/bbb_enc_x264_dash.mpd",
-        "4K_non_copyright_dataset/6_sec/x264/sintel/DASH_Files/full/sintel_enc_x264_dash.mpd",
-        "4K_non_copyright_dataset/6_sec/x264/tearsofsteel/DASH_Files/full/tearsofsteel_enc_x264_dash.mpd",
-        "4K_non_copyright_dataset/8_sec/x264/bbb/DASH_Files/full/bbb_enc_x264_dash.mpd",
-        "4K_non_copyright_dataset/8_sec/x264/sintel/DASH_Files/full/sintel_enc_x264_dash.mpd",
-        "4K_non_copyright_dataset/8_sec/x264/tearsofsteel/DASH_Files/full/tearsofsteel_enc_x264_dash.mpd",
-        "4K_non_copyright_dataset/10_sec/x264/bbb/DASH_Files/full/bbb_enc_x264_dash.mpd",
-        "4K_non_copyright_dataset/10_sec/x264/sintel/DASH_Files/full/sintel_enc_x264_dash.mpd",
-        "4K_non_copyright_dataset/10_sec/x264/tearsofsteel/DASH_Files/full/tearsofsteel_enc_x264_dash.mpd",
-    ]
-
-    datasets = [
-        "RazaDatasets/4g/B_2017.12.17_14.16.19.csv",
-        "RazaDatasets/4g/B_2018.01.27_13.58.28.csv",
-        "RazaDatasets/4g/B_2018.02.12_16.14.01.csv",
-        "RazaDatasets/5g/Static/B_2019.12.16_13.40.04.csv",
-        "RazaDatasets/5g/Static/B_2020.01.16_10.43.34.csv",
-        "RazaDatasets/5g/Static/B_2020.02.13_13.57.29.csv",
-        "RazaDatasets/5g/Static/B_2020.02.14_13.21.26.csv",
-        "RazaDatasets/5g/Static/B_2020.02.27_18.39.27.csv",
-    ]
-
-    dataset_modes = ["4g", "4g", "4g", "5g", "5g", "5g", "5g", "5g"]
-
-    server_types = ["wsgi"]
-    server_protocols = ["tcp", "quic"]
-    adaptation_algorithms = ["bba", "conventional", "elastic", "logistic"]
-
     normalized_datasets = get_normalized_datasets(datasets)
 
-    experiments_per_combination = 5
-
     done_experiment_hashes = set()
-    if os.path.exists(get_experiment_checkpoint_file_name()):
-        with open(get_experiment_checkpoint_file_name()) as f:
+    if use_checkpoint and os.path.exists(
+        get_experiment_checkpoint_file_name(experiment_root)
+    ):
+        with open(get_experiment_checkpoint_file_name(experiment_root)) as f:
             done_experiment_hashes = set(f.read().splitlines())
 
     for mpd_path in mpd_paths:
         for dataset, mode in zip(normalized_datasets, dataset_modes):
-            for server_type in server_types:
-                for server_protocol in server_protocols:
-                    for i in range(experiments_per_combination):
-                        experiment: Experiment = {
-                            "mobility": dataset,
-                            "server_type": server_type,
-                            "server_protocol": server_protocol,
-                            "mode": mode,
-                            "id": int(time.time()),
-                            "repetition": i,
-                            "adaptation_algorithm": "bba",
-                            "godash_config_path": "/home/raza/Downloads/goDASHbed/config/configure.json",
-                            "godash_bin_path": "/home/raza/Downloads/goDASH/godash/godash",
-                            "mpd_path": mpd_path,
-                        }  # type: ignore
+            for adaptation_algorithm in algos:
+                for server_type in server_types:
+                    for server_protocol in server_protocols:
+                        for i in range(experiments_per_combination):
+                            experiment: Experiment = {
+                                "mobility": dataset,
+                                "server_type": server_type,
+                                "server_protocol": server_protocol,
+                                "mode": mode,
+                                "id": int(time.time()),
+                                "repetition": i,
+                                "adaptation_algorithm": adaptation_algorithm,
+                                "godash_config_path": godash_config_path,
+                                "godash_bin_path": godash_bin_path,
+                                "mpd_path": mpd_path,
+                                "experiment_root_path": experiment_root,
+                            }  # type: ignore
 
-                        experiment_ordered_hash = get_experiment_ordered_hash(
-                            experiment
-                        )
-                        if experiment_ordered_hash in done_experiment_hashes:
-                            print(
-                                f"Skipping experiment with hash {experiment_ordered_hash} as it was already run"
+                            experiment_ordered_hash = get_experiment_ordered_hash(
+                                experiment
                             )
-                            continue
+                            if (
+                                use_checkpoint
+                                and experiment_ordered_hash in done_experiment_hashes
+                            ):
+                                print(
+                                    f"Skipping experiment with hash {experiment_ordered_hash} as it was already run"
+                                )
+                                continue
 
-                        print("Starting experiment for: ")
-                        print(f"Dataset: {dataset['name']}")
-                        print(f"Server type: {server_type}")
-                        print(f"Server protocol: {server_protocol}")
-                        print(f"Server mpd: {mpd_path}")
+                            print("Starting experiment for: ")
+                            print(f"Dataset: {dataset['name']}")
+                            print(f"Server type: {server_type}")
+                            print(f"Server protocol: {server_protocol}")
+                            print(f"Adaptation algorithm: {adaptation_algorithm}")
+                            print(f"Server mpd: {mpd_path}")
 
-                        experiment_result = run_experiment(experiment)
+                            experiment_result = run_experiment(experiment)
 
-                        with open(
-                            get_experiment_result_file_name(experiment_result), "w"
-                        ) as f:
-                            result = json.dumps(experiment_result, cls=NpEncoder)
-                            f.write(result)
+                            with open(
+                                get_experiment_result_file_name(experiment_result), "w"
+                            ) as f:
+                                result = json.dumps(experiment_result, cls=NpEncoder)
+                                f.write(result)
 
-                        print("Processing pcap result")
-                        process_pcap(experiment_result)
+                            print("Processing pcap result")
+                            process_pcap(experiment_result)
 
-                        print("Saving to checkpoint")
-                        with open(get_experiment_checkpoint_file_name(), "a") as f:
-                            f.write(f"{experiment_ordered_hash}\n")
-                            done_experiment_hashes.add(experiment_ordered_hash)
+                            print("Removing processed pcap file")
+                            cleanup_pcap(experiment_result)
+
+                            if use_checkpoint:
+                                print("Saving to checkpoint")
+                                with open(
+                                    get_experiment_checkpoint_file_name(), "a"
+                                ) as f:
+                                    f.write(f"{experiment_ordered_hash}\n")
+                                    done_experiment_hashes.add(experiment_ordered_hash)
