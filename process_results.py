@@ -207,7 +207,7 @@ def process_pcap(experiment_result: "ExperimentResult"):
             )
             df.to_csv(
                 (
-                    pathlib.Path(experiment_result["experiment_folder"]) / "/qos.csv"
+                    pathlib.Path(experiment_result["experiment_folder"]) / "qos.csv"
                 ).as_posix(),
                 index=False,
                 header=True,
@@ -215,7 +215,7 @@ def process_pcap(experiment_result: "ExperimentResult"):
 
     merged_columns = pd.merge(godash_result, df, on="Arr_time", how="left")
     merged_columns.to_csv(
-        (pathlib.Path(experiment_result["experiment_folder"]) / "/all.csv").as_posix(),
+        (pathlib.Path(experiment_result["experiment_folder"]) / "all.csv").as_posix(),
         index=False,
         header=True,
     )

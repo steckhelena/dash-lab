@@ -187,7 +187,9 @@ def get_pcap_output_file_name(experiment: Experiment, client: Host) -> str:
 
 
 def get_experiment_result_file_name(experiment: ExperimentResult) -> str:
-    return os.path.join(experiment["experiment"]["experiment_root_path"], "result.json")
+    return os.path.join(
+        get_experiment_folder_name(experiment["experiment"]), "result.json"
+    )
 
 
 def get_experiment_checkpoint_file_name(experiment_root_folder: str) -> str:
