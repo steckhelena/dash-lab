@@ -151,6 +151,20 @@ optional arguments:
 
 ```
 
+## Credits
+
+The files in the `godash_defaults` repo are adapted files from
+[goDASH](https://github.com/uccmisl/godash) and
+[goDASHbed](https://github.com/uccmisl/godashbed)\[2\]\[3\]
+
+The files in `5G-production-dataset` come from the
+[5GDataset](https://github.com/uccmisl/5Gdataset)\[1\]
+
+The files in `RazaDatasets` are just for example and come from the
+[5GDataset](https://github.com/uccmisl/5Gdataset)\[1\] and from the
+[Beyond Throughput: a 4G LTE Dataset with Channel and Context
+Metrics](https://www.ucc.ie/en/misl/research/datasets/ivid_4g_lte_dataset/)\[6\]
+
 ## References:
 
 [1] D. Raca, D. Leahy, C.J. Sreenan and J.J. Quinlan. Beyond Throughput, The
@@ -172,3 +186,7 @@ August 31 to September 03, 2020 CORA
 Quinlan, "DASH QoE Performance Evaluation Framework with 5G Datasets," 2020 16th
 International Conference on Network and Service Management (CNSM), Izmir,
 Turkey, 2020, pp. 1-6, doi: 10.23919/CNSM50824.2020.9269111.
+
+[6] Raca, Darijo & Quinlan, Jason & Zahran, Ahmed & Sreenan, Cormac. (2018).
+Beyond throughput: a 4G LTE dataset with channel and context metrics. 460-465.
+10.1145/3204949.3208123.
