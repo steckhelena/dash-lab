@@ -165,6 +165,10 @@ The files in `RazaDatasets` are just for example and come from the
 [Beyond Throughput: a 4G LTE Dataset with Channel and Context
 Metrics](https://www.ucc.ie/en/misl/research/datasets/ivid_4g_lte_dataset/)\[6\]
 
+The main file, `lab.py` is a rewritten version for ease-of-use and easier mass
+generation of data of the [DASH QoE Performance Evaluation Framework with 5G
+Datasets](https://github.com/intrig-unicamp/dashframework)\[5\] repo.
+
 ## References:
 
 [1] D. Raca, D. Leahy, C.J. Sreenan and J.J. Quinlan. Beyond Throughput, The
