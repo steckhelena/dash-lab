@@ -4,3 +4,4 @@ id_*
 logs
 __pycache__/
 experiment_results
+output/
