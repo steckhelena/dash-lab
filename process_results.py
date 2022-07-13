@@ -1,5 +1,6 @@
 import json
 import os
+import pathlib
 import re
 from pathlib import Path
 from typing import TYPE_CHECKING
@@ -205,14 +206,16 @@ def process_pcap(experiment_result: "ExperimentResult"):
                 ignore_index=True,
             )
             df.to_csv(
-                experiment_result["experiment"]["experiment_root_path"] + "/qos.csv",
+                (
+                    pathlib.Path(experiment_result["experiment_folder"]) / "/qos.csv"
+                ).as_posix(),
                 index=False,
                 header=True,
             )
 
     merged_columns = pd.merge(godash_result, df, on="Arr_time", how="left")
     merged_columns.to_csv(
-        experiment_result["experiment"]["experiment_root_path"] + "/all.csv",
+        (pathlib.Path(experiment_result["experiment_folder"]) / "/all.csv").as_posix(),
         index=False,
         header=True,
     )

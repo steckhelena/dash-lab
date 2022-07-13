@@ -60,6 +60,7 @@ class Experiment(TypedDict):
 class ExperimentResult(TypedDict):
     experiment: Experiment
     server_ip: str
+    experiment_folder: str
     experiment_godash_result_path: str
     experiment_host_pcap_path: str
     had_to_restart_tc: bool
@@ -409,6 +410,7 @@ def run_experiment(experiment: Experiment) -> ExperimentResult:
         "experiment_host_pcap_path": get_pcap_output_file_name(
             experiment, topology_response["client"]
         ),
+        "experiment_folder": get_experiment_folder_name(experiment),
         "had_to_restart_tc": had_to_restart_tc,
     }
 
