@@ -205,14 +205,16 @@ def process_pcap(experiment_result: "ExperimentResult"):
                 ignore_index=True,
             )
             df.to_csv(
-                experiment_result["experiment_root_path"] + "/qos.csv",
+                experiment_result["experiment"]["experiment_root_path"] + "/qos.csv",
                 index=False,
                 header=True,
             )
 
     merged_columns = pd.merge(godash_result, df, on="Arr_time", how="left")
     merged_columns.to_csv(
-        experiment_result["experiment_root_path"] + "/all.csv", index=False, header=True
+        experiment_result["experiment"]["experiment_root_path"] + "/all.csv",
+        index=False,
+        header=True,
     )
 
 

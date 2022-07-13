@@ -18,6 +18,8 @@ from mininet.node import Host, Switch
 from normalize_datasets import NormalizedDataset, get_normalized_datasets
 from process_results import cleanup_pcap, process_pcap
 
+verbose = False
+
 
 class Formatter(
     argparse.ArgumentDefaultsHelpFormatter, argparse.RawDescriptionHelpFormatter
@@ -129,17 +131,14 @@ def load_experiment_config(experiment: Experiment):
 
 
 def print_experiment(experiment: Experiment):
-    print("-------------------------------")
-    print(f"Network Trace Type : {experiment['server_type']}\n")
-
-    print("-------------------------------")
-    print(f"Network Trace Mobility : {experiment['mobility']['name']}\n")
-
-    print("-------------------------------")
-    print(f"ABS Algorithm : {experiment['adaptation_algorithm']}\n")
-
-    print("-------------------------------")
-    print(f"Protocol : {experiment['server_protocol']}\n")
+    print("=" * 10)
+    print("Starting experiment for: ")
+    print(f"Dataset: {experiment['mobility']['name']}")
+    print(f"Server type: {experiment['server_type']}")
+    print(f"Server protocol: {experiment['server_protocol']}")
+    print(f"Adaptation algorithm: {experiment['adaptation_algorithm']}")
+    print(f"Server mpd: {experiment['mpd_path']}")
+    print("=" * 10)
 
 
 def get_experiment_root_folder(experiment: Experiment) -> str:
@@ -259,9 +258,10 @@ def tc(experiment: Experiment, client: Host, is_finished):
     initial_upload_speed = initial_data["upload_kbps"]
     initial_interval = initial_data["change_interval_seconds"]
 
-    print(f"Setting initial data for {initial_interval}s:")
-    print(f"Download speed: {initial_download_speed}kbps")
-    print(f"Upload speed: {initial_upload_speed}kbps")
+    if verbose:
+        print(f"Setting initial data for {initial_interval}s:")
+        print(f"Download speed: {initial_download_speed}kbps")
+        print(f"Upload speed: {initial_upload_speed}kbps")
 
     # create root upload interface
     send_cmd(client, f"tc qdisc add dev {intf} root handle 1: htb default 1")
@@ -297,9 +297,10 @@ def tc(experiment: Experiment, client: Host, is_finished):
         curr_upload_speed = current_data["upload_kbps"]
         curr_interval = current_data["change_interval_seconds"]
 
-        print(f"Setting data for {curr_interval}s:")
-        print(f"Download speed: {curr_download_speed}kbps")
-        print(f"Upload speed: {curr_upload_speed}kbps")
+        if verbose:
+            print(f"Setting data for {curr_interval}s:")
+            print(f"Download speed: {curr_download_speed}kbps")
+            print(f"Upload speed: {curr_upload_speed}kbps")
 
         # change download class rate
         send_cmd(
@@ -577,6 +578,14 @@ def parse_command_line_options():
     )
     parser.set_defaults(use_checkpoint=True)
 
+    parser.add_argument(
+        "-v",
+        "--verbose",
+        action="store_true",
+        help="""Makes output verbose.""",
+        default=False,
+    )
+
     return parser.parse_args()
 
 
@@ -594,8 +603,13 @@ if __name__ == "__main__":
     experiment_root = parsed_commands.experiment_root
     godash_bin_path = parsed_commands.godash_bin
     godash_config_path = parsed_commands.godash_config_template
+    verbose = parsed_commands.verbose
 
-    setLogLevel("info")
+    if verbose:
+        setLogLevel("info")
+    else:
+        setLogLevel("warning")
+
     normalized_datasets = get_normalized_datasets(datasets)
 
     done_experiment_hashes = set()
@@ -637,12 +651,7 @@ if __name__ == "__main__":
                                 )
                                 continue
 
-                            print("Starting experiment for: ")
-                            print(f"Dataset: {dataset['name']}")
-                            print(f"Server type: {server_type}")
-                            print(f"Server protocol: {server_protocol}")
-                            print(f"Adaptation algorithm: {adaptation_algorithm}")
-                            print(f"Server mpd: {mpd_path}")
+                            print_experiment(experiment)
 
                             experiment_result = run_experiment(experiment)
 
@@ -661,7 +670,10 @@ if __name__ == "__main__":
                             if use_checkpoint:
                                 print("Saving to checkpoint")
                                 with open(
-                                    get_experiment_checkpoint_file_name(), "a"
+                                    get_experiment_checkpoint_file_name(
+                                        experiment_root
+                                    ),
+                                    "a",
                                 ) as f:
                                     f.write(f"{experiment_ordered_hash}\n")
                                     done_experiment_hashes.add(experiment_ordered_hash)
