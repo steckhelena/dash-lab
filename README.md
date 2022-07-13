@@ -36,7 +36,7 @@ For running this CLI it is necessary to have certain packages installed:
   - scapy(for reading pcap files and extracting QoS features)
   - hypercorn
   - mininet\[4\]
-  - jinja
+  - jinja2
 - mininet
 
 You also need to enable the ifb kernel module with `sudo modprobe ifb` for
