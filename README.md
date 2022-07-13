@@ -38,6 +38,7 @@ For running this CLI it is necessary to have certain packages installed:
   - mininet\[4\]
   - jinja2
 - mininet
+- caddy
 
 You also need to enable the ifb kernel module with `sudo modprobe ifb` for
 traffic control on the download packets on the host node.
