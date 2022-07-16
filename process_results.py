@@ -72,6 +72,9 @@ def process_pcap_tcp(experiment_result: "ExperimentResult"):
         ]
     )
     for beginning, end in zip(godash_timestamps_before, godash_timestamps_after):
+        beginning = int(beginning)
+        end = int(end)
+
         segment_time = (end - beginning) / 1000
 
         dl_05 = 0
@@ -265,6 +268,9 @@ def process_pcap_quic(experiment_result: "ExperimentResult"):
         ]
     )
     for beginning, end in zip(godash_timestamps_before, godash_timestamps_after):
+        beginning = int(beginning)
+        end = int(end)
+
         segment_time = (end - beginning) / 1000
 
         dl_05 = 0
