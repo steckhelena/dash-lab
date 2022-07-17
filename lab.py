@@ -621,7 +621,7 @@ def parse_command_line_options():
     return result
 
 
-if __name__ == "__main__":
+def main():
     parsed_commands = parse_command_line_options()
 
     mpd_paths = parsed_commands.mpd_path
@@ -735,3 +735,7 @@ if __name__ == "__main__":
                                 ) as f:
                                     f.write(f"{experiment_ordered_hash}\n")
                                     done_experiment_hashes.add(experiment_ordered_hash)
+
+
+if __name__ == "__main__":
+    main()
