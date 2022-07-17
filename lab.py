@@ -205,9 +205,6 @@ def server(server: Host, experiment: Experiment):
     load_experiment_config(experiment)
     parent_dir = get_defaults_path()
 
-    print(
-        f"sudo systemctl stop apache2.service && caddy start --config {parent_dir / 'CaddyFilev2QUIC'} --adapter caddyfile"
-    )
     if experiment["server_type"] == "wsgi":
         if experiment["server_protocol"] == "quic":
             server.cmd(
